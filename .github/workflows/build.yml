@@ -1,0 +1,167 @@
+name: CI/CD - Carbon Extender
+on:
+  push:
+    branches: [develop, main]
+    paths: 
+      - 'extender/**'
+      - 'manifests/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [develop, main]
+    paths: 
+      - 'extender/**'
+      - 'manifests/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/carbon-extender
+
+jobs:
+  lint-python:
+    name: Lint Python Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+      
+      - name: Install lint tools
+        run: pip install ruff bandit
+
+      - name: Ruff check
+        run: ruff check extender/
+
+      - name: Ruff format check
+        run: ruff format --check extender/
+
+      - name: Bandit security check
+        run: bandit -r extender/ -ll
+
+  test-python:
+    name: Test unitaires
+    runs-on: ubuntu-latest
+    needs: lint-python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r extender/requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run pytest
+        run: |
+          cd extender
+          pytest tests/ -v--- --tb=short
+
+  validate-manifests:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconfrom
+        run: |
+          curl -L -o kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+      
+      - name: Validate manifests
+        run: |
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            manifests/
+
+      - name: yamllint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: manifests/
+          config_data: |
+            extends: default
+            rules:
+              line-length: disable
+              document-start: disable
+  build:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    needs: [lint-python, test-python, validate-manifests]
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      image-tag: sha-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./extender
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Trivy scan (informational)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+  update-manifest:
+    name: Update image tag in manifest
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref_name }}
+      
+      - name: Update image tag in deployment
+        run: |
+          NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          
+          # Remplace la ligne `image: ghcr.io/.../carbon-extender:...`
+          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:.*|image: $NEW_IMAGE|" \
+            manifests/02-extender-deployment.yaml
+          
+          # Affiche le diff pour le log
+          git diff manifests/02-extender-deployment.yaml
+      
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifests/02-extender-deployment.yaml
+          git commit -m "ci: bump image to sha-${{ github.sha }} [skip ci]" || exit 0
+          git push
+
