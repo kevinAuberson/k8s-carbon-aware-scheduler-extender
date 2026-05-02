@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carbon-extender-scores
+  namespace: carbon-scheduler
+data:
+  scores.json: |
+    {
+      "iict-mv545-greenschedk8s-wk2": 10,
+      "iict-mv546-greenschedk8s-wk1": 0
+    }

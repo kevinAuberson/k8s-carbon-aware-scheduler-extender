@@ -54,14 +54,12 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install -r extender/requirements.txt
-          pip install pytest pytest-asyncio httpx
+        run: pip install -r extender/requirements-dev.txt
 
       - name: Run pytest
         run: |
           cd extender
-          pytest tests/ -v--- --tb=short
+          pytest tests/ -v --tb=short
 
   validate-manifests:
     name: Validate Kubernetes Manifests
