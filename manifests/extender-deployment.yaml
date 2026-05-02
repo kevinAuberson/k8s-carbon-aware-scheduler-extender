@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-extender
+  namespace: carbon-scheduler
+  labels:
+    app: carbon-extender
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carbon-extender
+  template:
+    metadata:
+      labels:
+        app: carbon-extender
+    spec:
+      containers:
+        - name: extender
+          image: ghcr.io/kevinAuberson/k8s-carbon-aware-scheduler-extender/carbon-extender:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SCORES_FILE
+              value: /etc/extender/scores.json
+          volumeMounts:
+            - name: scores
+              mountPath: /etc/extender
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: scores
+          configMap:
+            name: carbon-extender-scores
