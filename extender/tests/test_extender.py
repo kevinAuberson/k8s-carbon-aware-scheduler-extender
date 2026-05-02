@@ -25,11 +25,13 @@ def client(scores_file):
     import importlib
 
     import extender
+
     importlib.reload(extender)
     return TestClient(extender.app)
 
 
 # ─── Tests basiques ───────────────────────────────────────────
+
 
 def test_healthz(client):
     """L'endpoint /healthz doit répondre 200."""
@@ -58,6 +60,7 @@ def test_update_config(client):
 
 
 # ─── Tests de l'endpoint /prioritize ──────────────────────────
+
 
 def test_prioritize_returns_correct_scores(client):
     """L'endpoint /prioritize doit retourner les bons scores pour chaque node."""
@@ -106,14 +109,15 @@ def test_prioritize_handles_nodes_items_format(client):
 
 # ─── Tests de l'endpoint /filter ──────────────────────────────
 
+
 def test_filter_blocks_zero_score_nodes(client):
     """L'endpoint /filter doit bloquer les nodes avec un score de 0."""
     payload = {
         "Nodes": {
             "items": [
-                {"metadata": {"name": "node-green"}},   # score 10 → PASS
-                {"metadata": {"name": "node-red"}},     # score 0 → BLOCK
-                {"metadata": {"name": "node-inconnu"}}, # score 0 → BLOCK
+                {"metadata": {"name": "node-green"}},  # score 10 → PASS
+                {"metadata": {"name": "node-red"}},  # score 0 → BLOCK
+                {"metadata": {"name": "node-inconnu"}},  # score 0 → BLOCK
             ]
         }
     }
@@ -150,12 +154,14 @@ def test_filter_with_no_nodes(client):
 
 # ─── Test du loader de scores ─────────────────────────────────
 
+
 def test_load_scores_handles_missing_file(monkeypatch, tmp_path):
     """load_scores() doit retourner {} si le fichier n'existe pas."""
     monkeypatch.setenv("SCORES_FILE", str(tmp_path / "inexistant.json"))
     import importlib
 
     import extender
+
     importlib.reload(extender)
     assert extender.SCORES == {}
 
@@ -168,5 +174,6 @@ def test_load_scores_handles_invalid_json(monkeypatch, tmp_path):
     import importlib
 
     import extender
+
     importlib.reload(extender)
     assert extender.SCORES == {}
