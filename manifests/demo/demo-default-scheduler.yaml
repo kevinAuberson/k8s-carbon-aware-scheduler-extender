@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-default
+  labels:
+    demo: carbon-comparison
+spec:
+  containers:
+    - name: sleeper
+      image: busybox
+      command: ["sleep", "3600"]
