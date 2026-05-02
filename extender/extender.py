@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Request
-import logging
 import json
+import logging
 import os
 from pathlib import Path
+
+from fastapi import FastAPI, Request
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extender")

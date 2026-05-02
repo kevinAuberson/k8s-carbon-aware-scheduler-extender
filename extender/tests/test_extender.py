@@ -1,4 +1,5 @@
 import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,6 +23,7 @@ def client(scores_file):
     """Recharge le module extender avec le fichier de test, puis crée un client."""
     # Reload pour que SCORES soit recalculé avec la nouvelle env var
     import importlib
+
     import extender
     importlib.reload(extender)
     return TestClient(extender.app)
@@ -152,6 +154,7 @@ def test_load_scores_handles_missing_file(monkeypatch, tmp_path):
     """load_scores() doit retourner {} si le fichier n'existe pas."""
     monkeypatch.setenv("SCORES_FILE", str(tmp_path / "inexistant.json"))
     import importlib
+
     import extender
     importlib.reload(extender)
     assert extender.SCORES == {}
@@ -163,6 +166,7 @@ def test_load_scores_handles_invalid_json(monkeypatch, tmp_path):
     bad_file.write_text("{ not valid json")
     monkeypatch.setenv("SCORES_FILE", str(bad_file))
     import importlib
+
     import extender
     importlib.reload(extender)
     assert extender.SCORES == {}
