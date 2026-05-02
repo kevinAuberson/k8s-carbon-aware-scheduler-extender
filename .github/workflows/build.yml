@@ -54,9 +54,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install -r extender/requirements.txt
-          pip install pytest pytest-asyncio httpx
+        run: pip install -r extender/requirements-dev.txt
 
       - name: Run pytest
         run: |
