@@ -121,8 +121,8 @@ jobs:
           context: ./extender
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/k8s-carbon-aware-scheduler-extender/carbon-extender:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/k8s-carbon-aware-scheduler-extender/carbon-extender:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
@@ -153,16 +153,16 @@ jobs:
           
           # Remplace la ligne `image: ghcr.io/.../carbon-extender:...`
           sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:.*|image: $NEW_IMAGE|" \
-            manifests/02-extender-deployment.yaml
+            manifests/extender-deployment.yaml
           
           # Affiche le diff pour le log
-          git diff manifests/02-extender-deployment.yaml
+          git diff manifests/extender-deployment.yaml
       
       - name: Commit & push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add manifests/02-extender-deployment.yaml
+          git add manifests/extender-deployment.yaml
           git commit -m "ci: bump image to sha-${{ github.sha }} [skip ci]" || exit 0
           git push
 
