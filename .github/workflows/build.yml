@@ -59,7 +59,7 @@ jobs:
       - name: Run pytest
         run: |
           cd extender
-          pytest tests/ -v--- --tb=short
+          pytest tests/ -v --tb=short
 
   validate-manifests:
     name: Validate Kubernetes Manifests
