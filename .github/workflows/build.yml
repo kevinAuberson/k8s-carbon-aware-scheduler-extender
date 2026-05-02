@@ -121,8 +121,8 @@ jobs:
           context: ./extender
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/k8s-carbon-aware-scheduler-extender/carbon-extender:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/k8s-carbon-aware-scheduler-extender/carbon-extender:sha-${{ github.sha }}
+            ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-extender:${{ github.ref_name }}
+            ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-extender:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
