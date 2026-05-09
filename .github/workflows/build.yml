@@ -150,10 +150,10 @@ jobs:
       
       - name: Update image tag in deployment
         run: |
-          NEW_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          NEW_IMAGE="ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-extender:sha-${{ github.sha }}"
           
           # Remplace la ligne `image: ghcr.io/.../carbon-extender:...`
-          sed -i "s|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:.*|image: $NEW_IMAGE|" \
+          sed -i "s|image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-extender:.*|image: $NEW_IMAGE|" \
             manifests/extender-deployment.yaml
           
           # Affiche le diff pour le log
