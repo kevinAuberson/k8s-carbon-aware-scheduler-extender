@@ -1,30 +1,38 @@
 """
 File:        main.py
 Author:      Kevin Auberson
-Created:     2026-05-10
-Description: Entry point of the Carbon Signal Aggregator. Runs a polling
-             loop that collects data from all sources (Electricity Maps,
-             Kepler, metrics-server), combines them into a single carbon
-             signal snapshot, and publishes the result to a Kubernetes
-             ConfigMap consumed by the scheduler extender (Layer 1) and
-             the node eligibility controller (Layer 2).
+Created:     2026-05-21
+Description: Entry point of the Carbon Signal Aggregator. Polls all data
+             sources every POLL_INTERVAL seconds and publishes the result
+             to a Kubernetes ConfigMap consumed by the scheduler extender
+             (Layer 1) and the node eligibility controller (Layer 2).
+
+             Data architecture:
+             - Watts per K8s node    -> vSphere (real ESXi measurement)
+             - CPU/RAM per K8s node  -> metrics-server
+             - Watts per pod         -> Kepler (complementary, observability)
+             - Grid carbon intensity -> Electricity Maps
 """
+# Load environment variables before any other import that depends on them
+from dotenv import load_dotenv
+load_dotenv()
 
 import json
 import time
 import signal
-import sys
+import yaml
 from datetime import datetime, timezone
 from kubernetes import client, config
 
 from electricity_maps import ElectricityMaps
-from kepler import Kepler
+from vsphere import VSphere
 from metrics_server import MetricsServer
 
 # Polling and ConfigMap settings
-POLL_INTERVAL = 30  # seconds between each aggregation cycle
-NAMESPACE = "carbon-aware"
+POLL_INTERVAL = 30
+NAMESPACE = "carbon-scheduler"
 CONFIGMAP_NAME = "carbon-signal"
+NODE_MAPPING_FILE = "node_mapping.yaml"
 
 # Global flag used by the shutdown handler
 running = True
@@ -43,7 +51,30 @@ def handle_shutdown(signum, frame):
     running = False
 
 
-def build_signal(emaps, kepler, metrics):
+def load_node_mapping(path):
+    """
+    Load the K8s node -> vSphere VM name mapping from a YAML file.
+
+    Args:
+        path: Path to the YAML mapping file.
+
+    Returns:
+        A dict { k8s_node_name: vsphere_vm_name }. Empty dict if the file
+        is missing or invalid.
+    """
+    try:
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+        return data.get("mapping", {})
+    except FileNotFoundError:
+        print(f"[WARN] {path} not found, no node mapping available")
+        return {}
+    except yaml.YAMLError as e:
+        print(f"[WARN] Failed to parse {path}: {e}")
+        return {}
+
+
+def build_signal(emaps, vsphere, metrics, node_mapping):
     """
     Collect data from all sources and build a complete carbon signal.
 
@@ -52,15 +83,16 @@ def build_signal(emaps, kepler, metrics):
 
     Args:
         emaps: An ElectricityMaps instance.
-        kepler: A Kepler instance.
+        vsphere: A VSphere instance.
         metrics: A MetricsServer instance.
+        node_mapping: Dict { k8s_node_name: vsphere_vm_name }.
 
     Returns:
         A dict containing the timestamp, grid carbon intensity, and a
-        list of per-node entries with watts, CO2 emission rate, CPU
-        and memory usage.
+        list of per-node entries with watts (from vSphere), CO2 emission
+        rate, CPU and memory usage (from metrics-server).
     """
-    # Grid carbon intensity (with fallback if the API is down)
+    # 1. Grid carbon intensity (with fallback if the API is down)
     try:
         emaps_data = emaps.get_current()
         grid_intensity = emaps_data["carbon_intensity"]
@@ -70,34 +102,47 @@ def build_signal(emaps, kepler, metrics):
         grid_intensity = 100.0  # Approximate Swiss grid average
         zone = "CH"
 
-    # Per-node power (best-effort)
+    # 2. Per-VM watts from vSphere (ground truth from ESXi hardware sensor)
     try:
-        node_watts = kepler.get_node_watts()
+        vsphere_vms = vsphere.get_vm_estimated_watts()
+        # Build a lookup dict { vm_name: watts } for fast access
+        vm_watts = {vm["name"]: vm["watts"] for vm in vsphere_vms}
     except Exception as e:
-        print(f"[WARN] Kepler unavailable: {e}")
-        node_watts = {}
+        print(f"[WARN] vSphere unavailable: {e}")
+        vm_watts = {}
 
-    # Per-node CPU/RAM usage (best-effort)
+    # 3. Per-node CPU/RAM from metrics-server
     try:
         node_usage = metrics.get_node_usage()
     except Exception as e:
         print(f"[WARN] metrics-server unavailable: {e}")
         node_usage = {}
 
-    # Combine data per node (union of names seen by both sources)
-    all_nodes = set(node_watts.keys()) | set(node_usage.keys())
-
+    # 4. Combine all sources per node
+    # Iterate over K8s nodes (the authoritative list) and resolve their
+    # vSphere counterpart via the mapping file
     nodes = []
-    for name in all_nodes:
-        watts = node_watts.get(name, 0.0)
-        usage = node_usage.get(name, {"cpu_millicores": 0, "memory_mib": 0})
+    for k8s_name, usage in node_usage.items():
+        # Resolve the corresponding vSphere VM name (if mapped)
+        vsphere_name = node_mapping.get(k8s_name)
+        if vsphere_name is None:
+            print(f"[WARN] No vSphere mapping for K8s node '{k8s_name}'")
+            watts = 0.0
+        else:
+            watts = vm_watts.get(vsphere_name, 0.0)
+            if watts == 0.0:
+                print(
+                    f"[WARN] vSphere VM '{vsphere_name}' (mapped from "
+                    f"K8s '{k8s_name}') returned 0 watts or not found"
+                )
 
         # CO2 per second:
         #   Watts * (gCO2/kWh) / (3600 s/h * 1000 W/kW) = gCO2/s
         co2_per_second = watts * grid_intensity / (3600 * 1000)
 
         nodes.append({
-            "name": name,
+            "name": k8s_name,
+            "vsphere_name": vsphere_name,
             "watts": watts,
             "co2_g_per_s": co2_per_second,
             "cpu_millicores": usage["cpu_millicores"],
@@ -150,23 +195,27 @@ def write_configmap(signal_data):
 
 def main():
     """
-    Main loop: instantiate clients, then poll all sources every
-    POLL_INTERVAL seconds and publish the resulting signal to K8s.
+    Main loop: load node mapping, instantiate clients, then poll all
+    sources every POLL_INTERVAL seconds and publish the resulting signal.
     """
     # Register signal handlers for clean shutdown
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
+    # Load the K8s node <-> vSphere VM mapping
+    node_mapping = load_node_mapping(NODE_MAPPING_FILE)
+    print(f"Loaded {len(node_mapping)} node mappings from {NODE_MAPPING_FILE}")
+
     # Instantiate the source clients once (kept alive for the whole loop)
     emaps = ElectricityMaps()
-    kepler = Kepler()
+    vsphere = VSphere()
     metrics = MetricsServer()
 
     print(f"Carbon Signal Aggregator started (cycle every {POLL_INTERVAL}s)")
 
     while running:
         try:
-            data = build_signal(emaps, kepler, metrics)
+            data = build_signal(emaps, vsphere, metrics, node_mapping)
             write_configmap(data)
             print(
                 f"[{data['timestamp']}] "
