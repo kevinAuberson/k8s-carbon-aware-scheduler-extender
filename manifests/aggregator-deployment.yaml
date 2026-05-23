@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carbon-signal-aggregator
+  namespace: carbon-scheduler
+  labels:
+    app: carbon-signal-aggregator
+spec:
+  # Single replica: the aggregator is idempotent and the ConfigMap is
+  # last-write-wins, so we don't need (or want) multiple writers.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: carbon-signal-aggregator
+  template:
+    metadata:
+      labels:
+        app: carbon-signal-aggregator
+    spec:
+      serviceAccountName: carbon-signal-aggregator
+      containers:
+        - name: aggregator
+          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-signal-aggregator:0.1.0
+          imagePullPolicy: IfNotPresent
+
+          # Non-sensitive config
+          env:
+            - name: EMAPS_ZONE
+              value: "CH"
+            - name: PROMETHEUS_URL
+              value: "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+            - name: IN_CLUSTER
+              value: "true"
+            - name: VCENTER_VERIFY_SSL
+              value: "false"
+
+          # Sensitive config from the Secret (created via kubectl)
+          envFrom:
+            - secretRef:
+                name: carbon-signal-secrets
+
+          volumeMounts:
+            - name: node-mapping
+              mountPath: /app/node_mapping.yaml
+              subPath: node_mapping.yaml
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+      volumes:
+        - name: node-mapping
+          configMap:
+            name: carbon-signal-node-mapping
