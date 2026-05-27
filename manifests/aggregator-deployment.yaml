@@ -20,9 +20,11 @@ spec:
         app: carbon-signal-aggregator
     spec:
       serviceAccountName: carbon-signal-aggregator
+      imagePullSecrets:
+        - name: ghcr-auth
       containers:
         - name: aggregator
-          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-signal-aggregator:0.1.0
+          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/carbon-signal-aggregator:latest
           imagePullPolicy: IfNotPresent
 
           # Non-sensitive config
