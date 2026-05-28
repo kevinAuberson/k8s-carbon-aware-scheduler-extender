@@ -171,11 +171,6 @@ def write_configmap(signal_data):
         kubernetes.client.exceptions.ApiException: If the API rejects
         both the update and the create call.
     """
-    try:
-        config.load_incluster_config()
-    except config.ConfigException:
-        config.load_kube_config()
-
     api = client.CoreV1Api()
 
     cm_body = client.V1ConfigMap(
@@ -201,6 +196,16 @@ def main():
     # Register signal handlers for clean shutdown
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
+
+    # Load Kubernetes config ONCE for the whole process.
+    # In-cluster uses the pod's ServiceAccount token; otherwise local kubeconfig.
+    import os
+    if os.environ.get("IN_CLUSTER", "false").lower() == "true":
+        config.load_incluster_config()
+        print("Loaded in-cluster Kubernetes config")
+    else:
+        config.load_kube_config()
+        print("Loaded local kubeconfig")
 
     # Load the K8s node <-> vSphere VM mapping
     node_mapping = load_node_mapping(NODE_MAPPING_FILE)

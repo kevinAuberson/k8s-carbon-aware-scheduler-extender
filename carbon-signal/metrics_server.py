@@ -34,11 +34,6 @@ class MetricsServer:
         if self._api is not None:
             return
 
-        if self.in_cluster:
-            config.load_incluster_config()
-        else:
-            config.load_kube_config()
-
         self._api = client.CustomObjectsApi()
 
     def _parse_cpu(self, cpu_str):
