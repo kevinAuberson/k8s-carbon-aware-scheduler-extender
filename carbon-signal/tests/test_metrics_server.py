@@ -86,7 +86,7 @@ def _fake_node_metrics():
 
 
 @patch("metrics_server.client")
-def test_get_node_usage_parses_all_nodes(mock_client, mock_config):
+def test_get_node_usage_parses_all_nodes(mock_client):
     """get_node_usage returns parsed CPU/RAM for every node in the response."""
 
     mock_api = MagicMock()
