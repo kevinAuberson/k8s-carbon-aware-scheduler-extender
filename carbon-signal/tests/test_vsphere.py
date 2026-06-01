@@ -42,7 +42,6 @@ def test_get_host_power_computes_total_mhz():
     vs = VSphere()
     cache._store.clear()
 
-
     vs._connect = MagicMock()
     vs._content = MagicMock()
     fake_host = _fake_host("esxi-1", watts=250.0, cpu_mhz=2400, num_cores=20)
@@ -72,14 +71,16 @@ def test_vm_watts_estimation_ratio():
     fake_vm = _fake_vm("vm-1", host_name="esxi-1")
     vs._get_all = MagicMock(return_value=[fake_vm])
 
-    vs.get_host_power = MagicMock(return_value={
-        "esxi-1": {"watts": 200.0, "total_mhz": 48000}
-    })
+    vs.get_host_power = MagicMock(
+        return_value={"esxi-1": {"watts": 200.0, "total_mhz": 48000}}
+    )
 
-    vs._query_stats = MagicMock(return_value={
-        "cpu.usagemhz.average": 4800,
-        "mem.consumed.average": 2 * 1024 * 1024,
-    })
+    vs._query_stats = MagicMock(
+        return_value={
+            "cpu.usagemhz.average": 4800,
+            "mem.consumed.average": 2 * 1024 * 1024,
+        }
+    )
 
     result = vs.get_vm_estimated_watts()
 
@@ -101,13 +102,15 @@ def test_powered_off_vms_are_skipped():
     stopped_vm = _fake_vm("vm-off", host_name="esxi-1", power_state="poweredOff")
     vs._get_all = MagicMock(return_value=[running_vm, stopped_vm])
 
-    vs.get_host_power = MagicMock(return_value={
-        "esxi-1": {"watts": 200.0, "total_mhz": 48000}
-    })
-    vs._query_stats = MagicMock(return_value={
-        "cpu.usagemhz.average": 4800,
-        "mem.consumed.average": 1024 * 1024,
-    })
+    vs.get_host_power = MagicMock(
+        return_value={"esxi-1": {"watts": 200.0, "total_mhz": 48000}}
+    )
+    vs._query_stats = MagicMock(
+        return_value={
+            "cpu.usagemhz.average": 4800,
+            "mem.consumed.average": 1024 * 1024,
+        }
+    )
 
     result = vs.get_vm_estimated_watts()
 
@@ -127,13 +130,15 @@ def test_vm_watts_zero_when_host_unknown():
     fake_vm = _fake_vm("vm-1", host_name="unknown-host")
     vs._get_all = MagicMock(return_value=[fake_vm])
 
-    vs.get_host_power = MagicMock(return_value={
-        "esxi-1": {"watts": 200.0, "total_mhz": 48000}
-    })
-    vs._query_stats = MagicMock(return_value={
-        "cpu.usagemhz.average": 4800,
-        "mem.consumed.average": 1024 * 1024,
-    })
+    vs.get_host_power = MagicMock(
+        return_value={"esxi-1": {"watts": 200.0, "total_mhz": 48000}}
+    )
+    vs._query_stats = MagicMock(
+        return_value={
+            "cpu.usagemhz.average": 4800,
+            "mem.consumed.average": 1024 * 1024,
+        }
+    )
 
     result = vs.get_vm_estimated_watts()
 

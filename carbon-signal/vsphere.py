@@ -14,6 +14,7 @@ from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
 from cache import cache
 
+
 class VSphere:
     """Client for vCenter, exposing host power and per-VM estimations."""
 
@@ -29,7 +30,6 @@ class VSphere:
         self._perf_manager = None
         self._counter_ids = {}
 
-
     def _connect(self):
         """
         Connect to vCenter once and cache the session.
@@ -38,7 +38,7 @@ class VSphere:
         """
         if self._si is not None:
             return
-        
+
         ctx = ssl._create_unverified_context()
         self._si = SmartConnect(
             host=self.host,
@@ -75,8 +75,7 @@ class VSphere:
         """
         ids = [self._counter_ids[n] for n in counter_names if n in self._counter_ids]
         metric_ids = [
-            vim.PerformanceManager.MetricId(counterId=i, instance="")
-            for i in ids
+            vim.PerformanceManager.MetricId(counterId=i, instance="") for i in ids
         ]
 
         spec = vim.PerformanceManager.QuerySpec(
@@ -91,9 +90,7 @@ class VSphere:
             return {}
 
         id_to_name = {
-            self._counter_ids[n]: n
-            for n in counter_names
-            if n in self._counter_ids
+            self._counter_ids[n]: n for n in counter_names if n in self._counter_ids
         }
         output = {}
         for val in results[0].value:
@@ -174,10 +171,13 @@ class VSphere:
             if vm.runtime.powerState != "poweredOn":
                 continue
 
-            stats = self._query_stats(vm, [
-                "cpu.usagemhz.average",
-                "mem.consumed.average",
-            ])
+            stats = self._query_stats(
+                vm,
+                [
+                    "cpu.usagemhz.average",
+                    "mem.consumed.average",
+                ],
+            )
             cpu_mhz = stats.get("cpu.usagemhz.average", 0)
             mem_mib = stats.get("mem.consumed.average", 0) / 1024
 
@@ -189,13 +189,15 @@ class VSphere:
             else:
                 watts = 0
 
-            vms.append({
-                "name": vm.name,
-                "host": host_name,
-                "cpu_mhz": cpu_mhz,
-                "memory_mib": mem_mib,
-                "watts": watts,
-            })
+            vms.append(
+                {
+                    "name": vm.name,
+                    "host": host_name,
+                    "cpu_mhz": cpu_mhz,
+                    "memory_mib": mem_mib,
+                    "watts": watts,
+                }
+            )
 
         cache.set("vsphere_vms", vms, self.ttl)
         return vms
@@ -204,6 +206,7 @@ class VSphere:
 # Standalone test: python vsphere.py
 if __name__ == "__main__":
     from dotenv import load_dotenv
+
     load_dotenv()
     vs = VSphere()
     print(vs.get_vm_estimated_watts())

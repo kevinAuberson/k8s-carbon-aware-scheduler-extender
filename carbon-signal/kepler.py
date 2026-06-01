@@ -18,9 +18,7 @@ class Kepler:
     """Client for Kepler metrics, accessed via Prometheus."""
 
     def __init__(self):
-        self.prometheus_url = os.environ.get(
-            "PROMETHEUS_URL", "http://localhost:9090"
-        )
+        self.prometheus_url = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
         self.ttl = 30  # 30s — fine granularity for scheduling decisions
 
     def _query(self, promql):
@@ -93,11 +91,13 @@ class Kepler:
 
         pods = []
         for r in results:
-            pods.append({
-                "pod": r["metric"].get("pod_name", "unknown"),
-                "namespace": r["metric"].get("container_namespace", "unknown"),
-                "watts": float(r["value"][1]),
-            })
+            pods.append(
+                {
+                    "pod": r["metric"].get("pod_name", "unknown"),
+                    "namespace": r["metric"].get("container_namespace", "unknown"),
+                    "watts": float(r["value"][1]),
+                }
+            )
 
         cache.set("kepler_pods", pods, self.ttl)
         return pods

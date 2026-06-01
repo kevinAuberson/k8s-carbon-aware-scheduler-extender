@@ -23,9 +23,7 @@ def test_load_node_mapping_valid_file(tmp_path):
     """A well-formed YAML file is parsed into a dict."""
     yaml_file = tmp_path / "mapping.yaml"
     yaml_file.write_text(
-        "mapping:\n"
-        "  k8s-node-1: vsphere-vm-1\n"
-        "  k8s-node-2: vsphere-vm-2\n"
+        "mapping:\n  k8s-node-1: vsphere-vm-1\n  k8s-node-2: vsphere-vm-2\n"
     )
 
     result = main.load_node_mapping(str(yaml_file))
@@ -61,8 +59,13 @@ def _make_mocks(grid_intensity=92, vm_watts=50.0, cpu=500, mem=1024):
 
     vsphere = MagicMock()
     vsphere.get_vm_estimated_watts.return_value = [
-        {"name": "vsphere-vm-1", "host": "esxi-1", "watts": vm_watts,
-         "cpu_mhz": 4800, "memory_mib": 2048},
+        {
+            "name": "vsphere-vm-1",
+            "host": "esxi-1",
+            "watts": vm_watts,
+            "cpu_mhz": 4800,
+            "memory_mib": 2048,
+        },
     ]
 
     metrics = MagicMock()
@@ -142,5 +145,5 @@ def test_build_signal_vsphere_failure_keeps_going():
     signal = main.build_signal(emaps, vsphere, metrics, mapping)
 
     node = signal["nodes"][0]
-    assert node["watts"] == 0.0           # vSphere failed
+    assert node["watts"] == 0.0  # vSphere failed
     assert node["cpu_millicores"] == 500  # but metrics-server still worked

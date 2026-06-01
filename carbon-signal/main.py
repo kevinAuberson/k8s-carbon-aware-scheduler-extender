@@ -13,6 +13,7 @@ Description: Entry point of the Carbon Signal Aggregator. Polls all data
              - Watts per pod         -> Kepler (complementary, observability)
              - Grid carbon intensity -> Electricity Maps
 """
+
 import os
 import json
 import time
@@ -142,14 +143,16 @@ def build_signal(emaps, vsphere, metrics, node_mapping):
         #   Watts * (gCO2/kWh) / (3600 s/h * 1000 W/kW) = gCO2/s
         co2_per_second = watts * grid_intensity / (3600 * 1000)
 
-        nodes.append({
-            "name": k8s_name,
-            "vsphere_name": vsphere_name,
-            "watts": watts,
-            "co2_g_per_s": co2_per_second,
-            "cpu_millicores": usage["cpu_millicores"],
-            "memory_mib": usage["memory_mib"],
-        })
+        nodes.append(
+            {
+                "name": k8s_name,
+                "vsphere_name": vsphere_name,
+                "watts": watts,
+                "co2_g_per_s": co2_per_second,
+                "cpu_millicores": usage["cpu_millicores"],
+                "memory_mib": usage["memory_mib"],
+            }
+        )
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),

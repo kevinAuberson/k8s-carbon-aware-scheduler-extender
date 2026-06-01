@@ -97,6 +97,7 @@ def test_get_node_usage_parses_all_nodes(mock_client, mock_config):
     ms = MetricsServer()
 
     from cache import cache
+
     cache._store.clear()
 
     result = ms.get_node_usage()

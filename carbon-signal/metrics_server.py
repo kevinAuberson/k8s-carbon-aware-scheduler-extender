@@ -50,11 +50,11 @@ class MetricsServer:
         Returns:
             CPU usage in millicores as an integer.
         """
-        if cpu_str.endswith("n"):    # nanocores
+        if cpu_str.endswith("n"):  # nanocores
             return int(int(cpu_str[:-1]) / 1_000_000)
-        if cpu_str.endswith("u"):    # microcores
+        if cpu_str.endswith("u"):  # microcores
             return int(int(cpu_str[:-1]) / 1_000)
-        if cpu_str.endswith("m"):    # millicores
+        if cpu_str.endswith("m"):  # millicores
             return int(cpu_str[:-1])
         return int(float(cpu_str) * 1000)  # whole cores
 
@@ -70,12 +70,12 @@ class MetricsServer:
         Returns:
             Memory usage in MiB as an integer.
         """
-        units = {"Ki": 1/1024, "Mi": 1, "Gi": 1024, "Ti": 1024*1024}
+        units = {"Ki": 1 / 1024, "Mi": 1, "Gi": 1024, "Ti": 1024 * 1024}
         match = re.match(r"^(\d+)([A-Za-z]*)$", mem_str)
         if not match:
             return 0
         value, unit = int(match.group(1)), match.group(2)
-        return int(value * units.get(unit, 1/(1024*1024)))
+        return int(value * units.get(unit, 1 / (1024 * 1024)))
 
     def get_node_usage(self):
         """
@@ -148,12 +148,14 @@ class MetricsServer:
             for c in item.get("containers", []):
                 total_cpu += self._parse_cpu(c["usage"]["cpu"])
                 total_mem += self._parse_memory(c["usage"]["memory"])
-            pods.append({
-                "name": item["metadata"]["name"],
-                "namespace": item["metadata"]["namespace"],
-                "cpu_millicores": total_cpu,
-                "memory_mib": total_mem,
-            })
+            pods.append(
+                {
+                    "name": item["metadata"]["name"],
+                    "namespace": item["metadata"]["namespace"],
+                    "cpu_millicores": total_cpu,
+                    "memory_mib": total_mem,
+                }
+            )
 
         cache.set(cache_key, pods, self.ttl)
         return pods

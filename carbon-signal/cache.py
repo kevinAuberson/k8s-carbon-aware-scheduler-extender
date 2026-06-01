@@ -7,6 +7,7 @@ Description:    In-memory TTL cache used by all collectors to avoid hammering ex
 
 import time
 
+
 class Cache:
     """Simple TTL cache backed by a dictionary."""
 
@@ -30,7 +31,7 @@ class Cache:
             del self._store[key]
             return None
         return value
-    
+
     def set(self, key, value, ttl_seconds):
         """
         Store a value in the cache with a given lifetime.

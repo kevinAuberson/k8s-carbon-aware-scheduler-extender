@@ -30,15 +30,16 @@ def _fake_response(json_payload):
 def test_get_current_parses_intensity(mock_get):
     """get_current extracts carbon intensity, datetime and zone."""
 
-    mock_get.return_value = _fake_response({
-        "carbonIntensity": 92,
-        "datetime": "2026-05-21T10:00:00Z",
-        "zone": "CH",
-    })
+    mock_get.return_value = _fake_response(
+        {
+            "carbonIntensity": 92,
+            "datetime": "2026-05-21T10:00:00Z",
+            "zone": "CH",
+        }
+    )
     cache._store.clear()
 
     em = ElectricityMaps()
-
 
     result = em.get_current()
 
@@ -51,17 +52,19 @@ def test_get_current_parses_intensity(mock_get):
 def test_get_current_uses_cache_on_second_call(mock_get):
     """The second call hits the cache and does not call the API again."""
 
-    mock_get.return_value = _fake_response({
-        "carbonIntensity": 50,
-        "datetime": "2026-05-21T10:00:00Z",
-        "zone": "CH",
-    })
+    mock_get.return_value = _fake_response(
+        {
+            "carbonIntensity": 50,
+            "datetime": "2026-05-21T10:00:00Z",
+            "zone": "CH",
+        }
+    )
     cache._store.clear()
 
     em = ElectricityMaps()
 
-    em.get_current()           # first call -> hits the API
-    em.get_current()           # second call -> should hit the cache
+    em.get_current()  # first call -> hits the API
+    em.get_current()  # second call -> should hit the cache
 
     # Assert: requests.get was called only ONCE
     assert mock_get.call_count == 1
@@ -71,11 +74,13 @@ def test_get_current_uses_cache_on_second_call(mock_get):
 def test_get_current_calls_correct_url(mock_get):
     """The request targets the latest endpoint with the configured zone."""
 
-    mock_get.return_value = _fake_response({
-        "carbonIntensity": 10,
-        "datetime": "2026-05-21T10:00:00Z",
-        "zone": "CH",
-    })
+    mock_get.return_value = _fake_response(
+        {
+            "carbonIntensity": 10,
+            "datetime": "2026-05-21T10:00:00Z",
+            "zone": "CH",
+        }
+    )
     cache._store.clear()
 
     em = ElectricityMaps()
@@ -92,12 +97,14 @@ def test_get_current_calls_correct_url(mock_get):
 def test_get_forecast_returns_list(mock_get):
     """get_forecast_24h returns the forecast list from the API payload."""
 
-    mock_get.return_value = _fake_response({
-        "forecast": [
-            {"datetime": "2026-05-21T11:00:00Z", "carbonIntensity": 40},
-            {"datetime": "2026-05-21T12:00:00Z", "carbonIntensity": 35},
-        ]
-    })
+    mock_get.return_value = _fake_response(
+        {
+            "forecast": [
+                {"datetime": "2026-05-21T11:00:00Z", "carbonIntensity": 40},
+                {"datetime": "2026-05-21T12:00:00Z", "carbonIntensity": 35},
+            ]
+        }
+    )
     cache._store.clear()
 
     em = ElectricityMaps()
