@@ -13,20 +13,22 @@ Description: Entry point of the Carbon Signal Aggregator. Polls all data
              - Watts per pod         -> Kepler (complementary, observability)
              - Grid carbon intensity -> Electricity Maps
 """
-# Load environment variables before any other import that depends on them
-from dotenv import load_dotenv
-load_dotenv()
-
+import os
 import json
 import time
 import signal
 import yaml
 from datetime import datetime, timezone
+
+from dotenv import load_dotenv
 from kubernetes import client, config
 
 from electricity_maps import ElectricityMaps
 from vsphere import VSphere
 from metrics_server import MetricsServer
+
+# Load environment variables before any other import that depends on them
+load_dotenv()
 
 # Polling and ConfigMap settings
 POLL_INTERVAL = 30
@@ -199,7 +201,6 @@ def main():
 
     # Load Kubernetes config ONCE for the whole process.
     # In-cluster uses the pod's ServiceAccount token; otherwise local kubeconfig.
-    import os
     if os.environ.get("IN_CLUSTER", "false").lower() == "true":
         config.load_incluster_config()
         print("Loaded in-cluster Kubernetes config")

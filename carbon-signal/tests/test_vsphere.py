@@ -9,7 +9,7 @@ Description: Unit tests for the vSphere client. The vCenter connection and
 """
 
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 os.environ.setdefault("VCENTER_HOST", "fake-vcenter")
 os.environ.setdefault("VCENTER_USER", "fake-user")
