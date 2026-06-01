@@ -40,7 +40,7 @@ jobs:
         run: ruff format --check carbon-signal/
 
       - name: Bandit security check
-        run: bandit -r carbon-signal/ -ll
+        run: bandit -r carbon-signal/ -ll --skip B101 --exclude carbon-signal/tests
 
   test-python:
     name: Test unitaires

@@ -39,7 +39,10 @@ class VSphere:
         if self._si is not None:
             return
 
-        ctx = ssl._create_unverified_context()
+        # vCenter uses a self-signed certificate (internal HEIG-VD network).
+        # Validation is intentionally disabled here; mitigated by the network
+        # being isolated and access restricted by firewall.
+        ctx = ssl._create_unverified_context() # nosec B323
         self._si = SmartConnect(
             host=self.host,
             user=self.user,
