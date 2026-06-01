@@ -95,7 +95,7 @@ jobs:
   build:
     name: Build & push image
     runs-on: ubuntu-latest
-    needs: [lint-python, test-python]
+    needs: [lint-python, test-python, validate-manifests]
     if: github.event_name == 'push'
     permissions:
       contents: write
@@ -132,7 +132,7 @@ jobs:
       - name: Trivy scan (informational)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}/aggregator:sha-${{ github.sha }}
+          image-ref: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/aggregator:sha-${{ github.sha }}
           format: 'table'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
@@ -152,19 +152,17 @@ jobs:
       
       - name: Update image tag in deployment
         run: |
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          NEW_IMAGE="ghcr.io/${REPO_LOWER}/aggregator:sha-${{ github.sha }}"
+          NEW_IMAGE="ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/aggregator:sha-${{ github.sha }}"
           
-          # Modifie ici le nom du fichier s'il s'appelle différemment (ex: aggregator-deployment.yaml)
-          sed -i "s|image: ghcr.io/${REPO_LOWER}/aggregator:.*|image: $NEW_IMAGE|" \
-            manifests/carbon-signal-deployment.yaml
+          sed -i "s|image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/aggregator:.*|image: $NEW_IMAGE|" \
+            manifests/aggregator/aggregator-deployment.yaml
           
-          git diff manifests/carbon-signal-deployment.yaml
+          git diff manifests/aggregator/aggregator-deployment.yaml
       
       - name: Commit & push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add manifests/carbon-signal-deployment.yaml
+          git add manifests/aggregator/aggregator-deployment.yaml
           git commit -m "ci(aggregator): bump image to sha-${{ github.sha }} [skip ci]" || exit 0
           git push
