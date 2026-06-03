@@ -1,4 +1,4 @@
-"""Calcule les scores carbon-aware selon la spec 4.2."""
+
 import logging
 from typing import Optional
 
@@ -6,7 +6,7 @@ from workload_classifier import CarbonClass, PENALTY_FACTORS, classify
 
 log = logging.getLogger("scoring")
 
-# Score neutre quand tous les nodes sont équivalents (cf. 4.2.3)
+# Score neutre quand tous les nodes sont équivalents
 NEUTRAL_SCORE = 50
 # Score max et min
 MAX_SCORE = 100
@@ -14,7 +14,7 @@ MIN_SCORE = 0
 
 
 class CarbonScorer:
-    """Calcule les scores selon la formule 4.2."""
+
 
     def __init__(self, signal_loader):
         self.signal_loader = signal_loader
