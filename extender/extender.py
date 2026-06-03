@@ -1,91 +1,96 @@
-import json
+"""
+File:           extender.py
+Author:         Kevin Auberson
+Created:        2026-06-01
+Description:    Carbon-aware scheduler extender — endpoints HTTP.
+"""
+
 import logging
-import os
-from pathlib import Path
 
 from fastapi import FastAPI, Request
+
+from scoring import CarbonScorer, NEUTRAL_SCORE
+from signal_loader import SignalLoader
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extender")
 
 app = FastAPI()
 
-# Chemin du fichier de scores (montée via ConfigMap en prod)
-SCORES_FILE = os.getenv("SCORES_FILE", "/etc/extender/scores.json")
-
-
-def load_scores() -> dict:
-    """Charge les scores depuis le fichier monté en ConfigMap."""
-    try:
-        return json.loads(Path(SCORES_FILE).read_text())
-    except FileNotFoundError:
-        log.warning(f"Fichier {SCORES_FILE} introuvable, scores vides")
-        return {}
-    except json.JSONDecodeError as e:
-        log.error(f"JSON invalide dans {SCORES_FILE}: {e}")
-        return {}
-
-
-SCORES = load_scores()
-log.info(f"Scores chargés au démarrage : {SCORES}")
+# Singletons
+signal_loader = SignalLoader()
+scorer = CarbonScorer(signal_loader)
 
 
 @app.post("/prioritize")
 async def prioritize(request: Request):
+    """Endpoint appelé par le scheduler pour scorer les nodes candidats."""
     body = await request.json()
+    pod = body.get("Pod", {})
+    pod_name = pod.get("metadata", {}).get("name", "?")
     node_names = body.get("NodeNames") or [
-        n["metadata"]["name"] for n in body.get("Nodes", {}).get("items", [])
+        n["metadata"]["name"]
+        for n in body.get("Nodes", {}).get("items", [])
     ]
-    pod_name = body.get("Pod", {}).get("metadata", {}).get("name", "?")
 
-    results = []
-    for name in node_names:
-        score = SCORES.get(name, 0)
-        results.append({"Host": name, "Score": score})
-        log.info(f"Pod {pod_name} -> {name}: score={score}")
+    scores = scorer.score_nodes(pod, node_names)
+
+    results = [{"Host": name, "Score": scores.get(name, NEUTRAL_SCORE)}
+               for name in node_names]
 
     if results:
         best = max(results, key=lambda x: x["Score"])
-        log.info(f">>> Best node for {pod_name}: {best['Host']} (score={best['Score']})")
+        log.info(f"Pod {pod_name} → best: {best['Host']} (score={best['Score']})")
 
     return {"HostPriorityList": results}
 
 
 @app.post("/filter")
 async def filter_nodes(request: Request):
+    """Endpoint appelé par le scheduler pour filtrer les nodes inéligibles."""
     body = await request.json()
     nodes = body.get("Nodes", {}).get("items", [])
 
-    filtered = []
-    for node in nodes:
-        name = node["metadata"]["name"]
-        score = SCORES.get(name, 0)
-        if score > 0:
-            filtered.append(node)
-            log.info(f"FILTER: {name} -> PASS (score={score})")
-        else:
-            log.info(f"FILTER: {name} -> BLOCKED (score={score})")
-
+    # Pour l'instant : on laisse passer tous les nodes (pas de filtre dur).
+    # Le scoring se fera dans /prioritize.
+    # Plus tard, on pourra implémenter ici la logique de retardement
+    # pour les pods batch flexibles.
     return {
-        "Nodes": {"items": filtered},
+        "Nodes": {"items": nodes},
         "FailedNodes": {},
         "Error": "",
     }
 
 
-@app.post("/config")
-async def update_scores(new_scores: dict):
-    global SCORES
-    SCORES = new_scores
-    log.info(f"Scores updated: {SCORES}")
-    return {"scores": SCORES}
-
-
-@app.get("/config")
-async def get_scores():
-    return {"scores": SCORES}
-
-
 @app.get("/healthz")
 async def health():
-    return {"status": "ok"}
+    """Healthcheck simple."""
+    signal = signal_loader.load()
+    age = signal_loader.age_seconds()
+    return {
+        "status": "ok",
+        "signal_available": signal is not None,
+        "signal_age_seconds": age,
+    }
+
+
+@app.get("/debug/signal")
+async def debug_signal():
+    """Affiche le signal courant (debug)."""
+    return signal_loader.load() or {"error": "signal unavailable"}
+
+
+@app.get("/debug/score")
+async def debug_score(node: str = ""):
+    """Affiche le scoring pour un pod fictif (debug)."""
+    fake_pod = {
+        "metadata": {"name": "debug-pod"},
+        "status": {"qosClass": "Burstable"},
+    }
+    signal = signal_loader.load()
+    if not signal:
+        return {"error": "no signal"}
+    node_names = [n["name"] for n in signal["nodes"]]
+    if node:
+        node_names = [node]
+    return {"scores": scorer.score_nodes(fake_pod, node_names)}
