@@ -1,12 +1,11 @@
 """Classifie un pod selon son owner, sa QoS et son éventuel label explicite."""
 import logging
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 log = logging.getLogger("classifier")
 
 
-class CarbonClass(str, Enum):
+class CarbonClass(StrEnum):
     LATENCY_SENSITIVE = "latency-sensitive"
     BATCH = "batch"
     BEST_EFFORT = "best-effort"
@@ -88,7 +87,7 @@ def classify(pod: dict) -> CarbonClass:
     return CarbonClass.BEST_EFFORT
 
 
-def _get_controller_kind(metadata: dict) -> Optional[str]:
+def _get_controller_kind(metadata: dict) -> str | None:
     """
     Récupère le kind du controller owner du pod.
 

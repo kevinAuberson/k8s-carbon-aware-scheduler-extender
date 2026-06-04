@@ -3,9 +3,9 @@ import logging
 
 from fastapi import FastAPI, Request
 
-from scoring import CarbonScorer, NEUTRAL_SCORE
+from scoring import NEUTRAL_SCORE, CarbonScorer
 from signal_loader import SignalLoader
-from temporal import TemporalScheduler, DelayDecision
+from temporal import DelayDecision, TemporalScheduler
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extender")

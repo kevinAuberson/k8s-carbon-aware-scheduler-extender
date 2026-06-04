@@ -1,8 +1,7 @@
 
 import logging
-from typing import Optional
 
-from workload_classifier import CarbonClass, PENALTY_FACTORS, classify
+from workload_classifier import PENALTY_FACTORS, classify
 
 log = logging.getLogger("scoring")
 
@@ -55,7 +54,7 @@ class CarbonScorer:
 
     def _marginal_cost(
         self, node_name: str, signal: dict, alpha: float, ci_norm: float
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Calcule C_marginal pour un node :
         C_marginal = (1 + α × CI_norm) × P_node × (1 + CPU_load)
@@ -77,7 +76,7 @@ class CarbonScorer:
         return cost
 
     def _estimate_cpu_load(self, node: dict) -> float:
-        
+
         capacity = node.get("cpu_capacity_millicores")
         if capacity and capacity > 0:
             return min(node["cpu_millicores"] / capacity, 1.0)

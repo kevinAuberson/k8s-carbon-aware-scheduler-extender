@@ -7,9 +7,8 @@ s'appuyant sur le forecast 24h de l'API ElectricityMaps.
 """
 import logging
 import os
-from datetime import datetime, timezone, timedelta
-from enum import Enum
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from workload_classifier import CarbonClass, classify
 
@@ -43,7 +42,7 @@ ANN_MAX_DELAY = "carbon-aware/max-delay-hours"
 
 # ─── Types ─────────────────────────────────────────────────────────
 
-class DelayDecision(str, Enum):
+class DelayDecision(StrEnum):
     SCHEDULE_NOW = "schedule_now"
     DELAY = "delay"
 
@@ -81,7 +80,6 @@ class TemporalScheduler:
 
     def decide(self, pod: dict) -> tuple[DelayDecision, str]:
         """Décide pour un pod donné : schedule maintenant ou retarder."""
-        pod_name = pod.get("metadata", {}).get("name", "?")
         carbon_class = classify(pod)
 
         # 1. Latency-sensitive : jamais retardé
@@ -110,8 +108,8 @@ class TemporalScheduler:
         max_delay_end = self._compute_max_delay_end(pod)
         effective_deadline = self._min_dt(deadline, max_delay_end)
 
-        if effective_deadline and datetime.now(timezone.utc) >= effective_deadline:
-            return self._now(f"deadline/max-delay reached, forcing schedule")
+        if effective_deadline and datetime.now(UTC) >= effective_deadline:
+            return self._now("deadline/max-delay reached, forcing schedule")
 
         # 6. Analyser le forecast pour trouver la fenêtre optimale
         forecast = signal.get("forecast_24h", [])
@@ -131,7 +129,7 @@ class TemporalScheduler:
         carbon_class: CarbonClass,
         current_ci: float,
         forecast: list[dict],
-        effective_deadline: Optional[datetime],
+        effective_deadline: datetime | None,
     ) -> tuple[DelayDecision, str]:
         """
         Cherche le moment optimal pour exécuter le pod dans le forecast.
@@ -229,7 +227,7 @@ class TemporalScheduler:
 
     # ─── Helpers : deadlines & temps ─────────────────────────────
 
-    def _parse_deadline(self, pod: dict) -> Optional[datetime]:
+    def _parse_deadline(self, pod: dict) -> datetime | None:
         """Parse l'annotation carbon-aware/deadline en datetime UTC."""
         deadline_str = (
             pod.get("metadata", {}).get("annotations", {}).get(ANN_DEADLINE)
@@ -239,13 +237,13 @@ class TemporalScheduler:
         try:
             dt = datetime.fromisoformat(deadline_str.replace("Z", "+00:00"))
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
             return dt
         except ValueError as e:
             log.warning(f"Invalid deadline '{deadline_str}': {e}")
             return None
 
-    def _compute_max_delay_end(self, pod: dict) -> Optional[datetime]:
+    def _compute_max_delay_end(self, pod: dict) -> datetime | None:
         """Calcule la fin du max-delay = creationTimestamp + max_delay_hours."""
         metadata = pod.get("metadata", {})
         created_str = metadata.get("creationTimestamp")
@@ -256,7 +254,7 @@ class TemporalScheduler:
                 created_str.replace("Z", "+00:00")
             )
             if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
+                created = created.replace(tzinfo=UTC)
         except ValueError:
             return None
 
@@ -271,8 +269,8 @@ class TemporalScheduler:
         return created + timedelta(hours=max_hours)
 
     def _min_dt(
-        self, a: Optional[datetime], b: Optional[datetime]
-    ) -> Optional[datetime]:
+        self, a: datetime | None, b: datetime | None
+    ) -> datetime | None:
         """Retourne le plus petit datetime non-None."""
         if a is None:
             return b
@@ -281,7 +279,7 @@ class TemporalScheduler:
         return min(a, b)
 
     def _filter_before_deadline(
-        self, forecast: list[dict], deadline: Optional[datetime]
+        self, forecast: list[dict], deadline: datetime | None
     ) -> list[dict]:
         """Garde les points du forecast situés avant la deadline."""
         if not deadline:
@@ -310,7 +308,7 @@ class TemporalScheduler:
 
     def find_optimal_window(
         self, hours_ahead: int = 24
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Outil debug : retourne le moment optimal dans les N prochaines heures.
         Utile pour /debug/forecast.
@@ -323,7 +321,7 @@ class TemporalScheduler:
         if not forecast:
             return None
 
-        horizon = datetime.now(timezone.utc) + timedelta(hours=hours_ahead)
+        horizon = datetime.now(UTC) + timedelta(hours=hours_ahead)
         valid = self._filter_before_deadline(forecast, horizon)
         if not valid:
             return None

@@ -4,7 +4,6 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger("signal_loader")
 
@@ -17,7 +16,7 @@ class SignalLoader:
     def __init__(self, signal_file: str = SIGNAL_FILE):
         self.signal_file = Path(signal_file)
 
-    def load(self) -> Optional[dict]:
+    def load(self) -> dict | None:
         """Lit le signal courant. Retourne None si indisponible."""
         try:
             data = json.loads(self.signal_file.read_text())
@@ -38,7 +37,7 @@ class SignalLoader:
         if not isinstance(data["nodes"], list) or not data["nodes"]:
             raise ValueError("nodes must be a non-empty list")
 
-    def get_node_data(self, node_name: str) -> Optional[dict]:
+    def get_node_data(self, node_name: str) -> dict | None:
         """Retourne les données d'un node spécifique."""
         signal = self.load()
         if not signal:
@@ -48,7 +47,7 @@ class SignalLoader:
                 return node
         return None
 
-    def age_seconds(self) -> Optional[float]:
+    def age_seconds(self) -> float | None:
         """Âge du signal en secondes (utile pour détecter signal périmé)."""
         signal = self.load()
         if not signal:
