@@ -1,4 +1,5 @@
 """Carbon-aware scheduler extender — endpoints HTTP."""
+
 import logging
 
 from fastapi import FastAPI, Request
@@ -38,10 +39,7 @@ async def filter_nodes(request: Request):
         # On bloque tous les nodes → le pod reste en Pending
         return {
             "Nodes": {"items": []},
-            "FailedNodes": {
-                name: f"carbon-aware delay: {reason}"
-                for name in node_names_str
-            },
+            "FailedNodes": {name: f"carbon-aware delay: {reason}" for name in node_names_str},
             "Error": "",
         }
 
@@ -60,15 +58,11 @@ async def prioritize(request: Request):
     pod = body.get("Pod", {})
     pod_name = pod.get("metadata", {}).get("name", "?")
     node_names = body.get("NodeNames") or [
-        n["metadata"]["name"]
-        for n in body.get("Nodes", {}).get("items", [])
+        n["metadata"]["name"] for n in body.get("Nodes", {}).get("items", [])
     ]
 
     scores = scorer.score_nodes(pod, node_names)
-    results = [
-        {"Host": name, "Score": scores.get(name, NEUTRAL_SCORE)}
-        for name in node_names
-    ]
+    results = [{"Host": name, "Score": scores.get(name, NEUTRAL_SCORE)} for name in node_names]
 
     if results:
         best = max(results, key=lambda x: x["Score"])
@@ -128,6 +122,7 @@ async def debug_decide():
         for name, pod in fake_pods.items()
         for d in [temporal.decide(pod)]
     }
+
 
 @app.get("/debug/forecast")
 async def debug_forecast():

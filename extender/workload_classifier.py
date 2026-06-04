@@ -1,4 +1,5 @@
 """Classifie un pod selon son owner, sa QoS et son éventuel label explicite."""
+
 import logging
 from enum import StrEnum
 
@@ -80,10 +81,7 @@ def classify(pod: dict) -> CarbonClass:
         return CarbonClass.BATCH
 
     # 2e. Fallback : pod orphelin ou kind inconnu
-    log.warning(
-        f"Pod {pod_name}: unknown owner '{owner_kind}', "
-        f"defaulting to best-effort"
-    )
+    log.warning(f"Pod {pod_name}: unknown owner '{owner_kind}', defaulting to best-effort")
     return CarbonClass.BEST_EFFORT
 
 

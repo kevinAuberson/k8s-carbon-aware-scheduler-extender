@@ -1,4 +1,3 @@
-
 import logging
 
 from workload_classifier import PENALTY_FACTORS, classify
@@ -13,8 +12,6 @@ MIN_SCORE = 0
 
 
 class CarbonScorer:
-
-
     def __init__(self, signal_loader):
         self.signal_loader = signal_loader
 
@@ -90,9 +87,7 @@ class CarbonScorer:
         """
         return min(ci / 500.0, 1.0)
 
-    def _normalize_to_scores(
-        self, costs: dict[str, float], all_nodes: list[str]
-    ) -> dict[str, int]:
+    def _normalize_to_scores(self, costs: dict[str, float], all_nodes: list[str]) -> dict[str, int]:
         """
         Normalise les coûts marginaux en scores 0-100.
         Le node avec le coût le plus bas a le score le plus haut.

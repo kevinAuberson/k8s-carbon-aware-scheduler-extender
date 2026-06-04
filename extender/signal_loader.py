@@ -1,4 +1,5 @@
 """Charge et expose les données de carbon-signal."""
+
 import json
 import logging
 import os

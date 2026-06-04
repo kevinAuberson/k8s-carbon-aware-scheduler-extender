@@ -7,6 +7,7 @@ from temporal import DelayDecision, TemporalScheduler
 
 # ─── Fixtures ────────────────────────────────────────────────────
 
+
 def make_forecast(current_ci, hourly_values):
     """Génère un forecast à partir d'une liste d'intensités horaires."""
     now = datetime.now(UTC)
@@ -62,6 +63,7 @@ def scheduler():
 
 # ─── Latency-sensitive jamais retardé ────────────────────────────
 
+
 def test_latency_sensitive_never_delayed_even_red(scheduler):
     sched, loader = scheduler
     loader.load.return_value = make_signal(ci=120)  # pic record
@@ -77,6 +79,7 @@ def test_latency_sensitive_never_delayed_even_red(scheduler):
 
 
 # ─── Best-effort : analyse du forecast ───────────────────────────
+
 
 def test_besteffort_delayed_when_better_window_exists(scheduler):
     """Best-effort : retardé si une meilleure fenêtre existe."""
@@ -116,6 +119,7 @@ def test_besteffort_scheduled_when_gain_is_small(scheduler):
 
 # ─── Batch : seulement retardé en zone rouge ─────────────────────
 
+
 def test_batch_flexible_delayed_in_red_zone(scheduler):
     """Batch flexible : retardé seulement si zone rouge."""
     sched, loader = scheduler
@@ -150,6 +154,7 @@ def test_batch_not_flexible_never_delayed(scheduler):
 
 # ─── Deadlines ───────────────────────────────────────────────────
 
+
 def test_deadline_in_past_forces_schedule(scheduler):
     sched, loader = scheduler
     forecast = make_forecast(80, [60, 40, 30])
@@ -182,6 +187,7 @@ def test_deadline_excludes_far_future_optimal(scheduler):
 
 # ─── Max delay ───────────────────────────────────────────────────
 
+
 def test_max_delay_exceeded_forces_schedule(scheduler):
     """Si le pod attend depuis trop longtemps, on force le scheduling."""
     sched, loader = scheduler
@@ -197,6 +203,7 @@ def test_max_delay_exceeded_forces_schedule(scheduler):
 
 # ─── Pas de forecast (fallback) ──────────────────────────────────
 
+
 def test_no_forecast_falls_back_to_zone_logic(scheduler):
     """Sans forecast, on utilise la logique simple à 2 zones."""
     sched, loader = scheduler
@@ -208,6 +215,7 @@ def test_no_forecast_falls_back_to_zone_logic(scheduler):
 
 # ─── Pas de signal ────────────────────────────────────────────────
 
+
 def test_no_signal_fails_safe(scheduler):
     """Sans signal, on schedule par défaut (fail-safe)."""
     sched, loader = scheduler
@@ -218,6 +226,7 @@ def test_no_signal_fails_safe(scheduler):
 
 
 # ─── Grid déjà verte ─────────────────────────────────────────────
+
 
 def test_green_grid_always_schedules(scheduler):
     """Grid déjà verte → schedule tout le monde."""

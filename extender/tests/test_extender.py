@@ -10,7 +10,8 @@ def make_signal(ci=50, forecast=None, nodes=None):
         "timestamp": datetime.now(UTC).isoformat(),
         "grid_intensity_g_per_kwh": ci,
         "forecast_24h": forecast or [],
-        "nodes": nodes or [
+        "nodes": nodes
+        or [
             {"name": "node-a", "watts": 2.0, "cpu_millicores": 500},
             {"name": "node-b", "watts": 4.0, "cpu_millicores": 1000},
         ],
@@ -38,12 +39,15 @@ def mock_loader():
 
 @pytest.fixture
 def client(mock_loader):
-    with patch("extender.signal_loader", mock_loader), \
-        patch("extender.scorer.signal_loader", mock_loader), \
-        patch("extender.temporal.signal_loader", mock_loader):
+    with (
+        patch("extender.signal_loader", mock_loader),
+        patch("extender.scorer.signal_loader", mock_loader),
+        patch("extender.temporal.signal_loader", mock_loader),
+    ):
         import importlib
 
         import extender
+
         importlib.reload(extender)
         extender.signal_loader = mock_loader
         extender.scorer.signal_loader = mock_loader
@@ -52,6 +56,7 @@ def client(mock_loader):
 
 
 # ─── /healthz ────────────────────────────────────────────────────
+
 
 def test_healthz_ok(client):
     c, loader = client
@@ -73,6 +78,7 @@ def test_healthz_no_signal(client):
 
 
 # ─── /filter ─────────────────────────────────────────────────────
+
 
 def test_filter_passes_all_nodes_when_schedule_now(client):
     """Grille verte → schedule_now → tous les nodes passent."""
@@ -126,6 +132,7 @@ def test_filter_never_delays_latency_sensitive(client):
 
 # ─── /prioritize ─────────────────────────────────────────────────
 
+
 def test_prioritize_scores_all_nodes(client):
     c, loader = client
     pod = {"metadata": {"name": "p"}, "status": {"qosClass": "Burstable"}}
@@ -155,6 +162,7 @@ def test_prioritize_no_signal_returns_neutral(client):
 
 
 # ─── /debug/forecast ─────────────────────────────────────────────
+
 
 def test_debug_forecast_no_signal(client):
     c, loader = client

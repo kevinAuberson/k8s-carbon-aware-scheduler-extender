@@ -5,6 +5,7 @@ Décide si un pod doit être schedulé maintenant ou retardé jusqu'à une
 fenêtre temporelle plus favorable (intensité carbone plus basse), en
 s'appuyant sur le forecast 24h de l'API ElectricityMaps.
 """
+
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -42,12 +43,14 @@ ANN_MAX_DELAY = "carbon-aware/max-delay-hours"
 
 # ─── Types ─────────────────────────────────────────────────────────
 
+
 class DelayDecision(StrEnum):
     SCHEDULE_NOW = "schedule_now"
     DELAY = "delay"
 
 
 # ─── Moteur de décision ────────────────────────────────────────────
+
 
 class TemporalScheduler:
     """
@@ -99,9 +102,7 @@ class TemporalScheduler:
 
         # 4. Si déjà très propre → schedule
         if current_ci <= self.green_threshold:
-            return self._now(
-                f"grid already green ({current_ci} ≤ {self.green_threshold})"
-            )
+            return self._now(f"grid already green ({current_ci} ≤ {self.green_threshold})")
 
         # 5. Vérifier la deadline (atteinte ?)
         deadline = self._parse_deadline(pod)
@@ -173,9 +174,7 @@ class TemporalScheduler:
                     f"(now={current_ci:.0f}, optimal={min_ci:.0f} at {min_dt}, "
                     f"gain={gain:.0f})"
                 )
-            return self._now(
-                f"batch in orange zone (CI={current_ci:.0f}), scheduling now"
-            )
+            return self._now(f"batch in orange zone (CI={current_ci:.0f}), scheduling now")
 
         return self._now(f"unhandled class {carbon_class}, defaulting to now")
 
@@ -192,19 +191,14 @@ class TemporalScheduler:
         """
         if current_ci > self.dirty_threshold:
             return self._delay(
-                f"red zone (CI={current_ci:.0f} > {self.dirty_threshold}), "
-                f"no forecast available"
+                f"red zone (CI={current_ci:.0f} > {self.dirty_threshold}), no forecast available"
             )
 
         # Zone orange (entre green et dirty)
         if carbon_class == CarbonClass.BEST_EFFORT:
-            return self._delay(
-                f"orange zone (CI={current_ci:.0f}), delaying best-effort"
-            )
+            return self._delay(f"orange zone (CI={current_ci:.0f}), delaying best-effort")
 
-        return self._now(
-            f"orange zone (CI={current_ci:.0f}), batch can proceed"
-        )
+        return self._now(f"orange zone (CI={current_ci:.0f}), batch can proceed")
 
     # ─── Helpers : flexibilité ───────────────────────────────────
 
@@ -229,9 +223,7 @@ class TemporalScheduler:
 
     def _parse_deadline(self, pod: dict) -> datetime | None:
         """Parse l'annotation carbon-aware/deadline en datetime UTC."""
-        deadline_str = (
-            pod.get("metadata", {}).get("annotations", {}).get(ANN_DEADLINE)
-        )
+        deadline_str = pod.get("metadata", {}).get("annotations", {}).get(ANN_DEADLINE)
         if not deadline_str:
             return None
         try:
@@ -250,9 +242,7 @@ class TemporalScheduler:
         if not created_str:
             return None
         try:
-            created = datetime.fromisoformat(
-                created_str.replace("Z", "+00:00")
-            )
+            created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
             if created.tzinfo is None:
                 created = created.replace(tzinfo=UTC)
         except ValueError:
@@ -268,9 +258,7 @@ class TemporalScheduler:
 
         return created + timedelta(hours=max_hours)
 
-    def _min_dt(
-        self, a: datetime | None, b: datetime | None
-    ) -> datetime | None:
+    def _min_dt(self, a: datetime | None, b: datetime | None) -> datetime | None:
         """Retourne le plus petit datetime non-None."""
         if a is None:
             return b
@@ -287,9 +275,7 @@ class TemporalScheduler:
         result = []
         for point in forecast:
             try:
-                dt = datetime.fromisoformat(
-                    point["datetime"].replace("Z", "+00:00")
-                )
+                dt = datetime.fromisoformat(point["datetime"].replace("Z", "+00:00"))
                 if dt < deadline:
                     result.append(point)
             except (ValueError, KeyError):
@@ -306,9 +292,7 @@ class TemporalScheduler:
 
     # ─── API debug ──────────────────────────────────────────────
 
-    def find_optimal_window(
-        self, hours_ahead: int = 24
-    ) -> dict | None:
+    def find_optimal_window(self, hours_ahead: int = 24) -> dict | None:
         """
         Outil debug : retourne le moment optimal dans les N prochaines heures.
         Utile pour /debug/forecast.
@@ -331,6 +315,5 @@ class TemporalScheduler:
             "optimal_datetime": min_point["datetime"],
             "optimal_carbon_intensity": min_point["carbon_intensity"],
             "current_carbon_intensity": signal["grid_intensity_g_per_kwh"],
-            "potential_gain": signal["grid_intensity_g_per_kwh"]
-            - min_point["carbon_intensity"],
+            "potential_gain": signal["grid_intensity_g_per_kwh"] - min_point["carbon_intensity"],
         }

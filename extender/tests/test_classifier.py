@@ -2,15 +2,14 @@ from workload_classifier import CarbonClass, classify
 
 # ─── Override par label explicite ─────────────────────────────
 
+
 def test_explicit_label_overrides_classification():
     """Le label carbon-class doit prendre le pas sur la logique auto."""
     pod = {
         "metadata": {
             "name": "test",
             "labels": {"carbon-class": "best-effort"},
-            "ownerReferences": [
-                {"kind": "ReplicaSet", "controller": True}
-            ],
+            "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
         },
         "status": {"qosClass": "Guaranteed"},
     }
@@ -24,9 +23,7 @@ def test_invalid_label_falls_back_to_auto():
         "metadata": {
             "name": "test",
             "labels": {"carbon-class": "invalid-value"},
-            "ownerReferences": [
-                {"kind": "ReplicaSet", "controller": True}
-            ],
+            "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
         },
         "status": {"qosClass": "Guaranteed"},
     }
@@ -36,6 +33,7 @@ def test_invalid_label_falls_back_to_auto():
 
 # ─── controller: true vs [0] ──────────────────────────────────
 
+
 def test_picks_controller_owner_not_first():
     """Doit choisir l'owner avec controller=true, pas juste [0]."""
     pod = {
@@ -43,7 +41,7 @@ def test_picks_controller_owner_not_first():
             "name": "test",
             "ownerReferences": [
                 {"kind": "SomeOther", "controller": False},
-                {"kind": "Job", "controller": True},    # ← celui-ci
+                {"kind": "Job", "controller": True},  # ← celui-ci
             ],
         },
         "status": {"qosClass": "Burstable"},
@@ -52,6 +50,7 @@ def test_picks_controller_owner_not_first():
 
 
 # ─── Logique de classification (mise à jour) ──────────────────
+
 
 def test_daemonset_is_latency_sensitive():
     pod = {
