@@ -41,8 +41,8 @@ class ElectricityMaps:
         if cached is not None:
             return cached
 
-        url = (f"{self.base_url}/carbon-intensity/latest"
-               f"?zone={self.zone}&emissionFactorType=lifecycle"
+        url = (
+            f"{self.base_url}/carbon-intensity/latest?zone={self.zone}&emissionFactorType=lifecycle"
         )
         response = requests.get(url, headers=self._headers(), timeout=10)
         response.raise_for_status()
@@ -73,8 +73,9 @@ class ElectricityMaps:
         if cached is not None:
             return cached
 
-        url = (f"{self.base_url}/carbon-intensity/forecast"
-               f"?zone={self.zone}&emissionFactorType=lifecycle"
+        url = (
+            f"{self.base_url}/carbon-intensity/forecast"
+            f"?zone={self.zone}&emissionFactorType=lifecycle"
         )
         response = requests.get(url, headers=self._headers(), timeout=10)
         response.raise_for_status()

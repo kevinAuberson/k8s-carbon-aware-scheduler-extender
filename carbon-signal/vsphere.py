@@ -79,9 +79,7 @@ class VSphere:
             A dict {counter_name: float_value}. Empty if no data.
         """
         ids = [self._counter_ids[n] for n in counter_names if n in self._counter_ids]
-        metric_ids = [
-            vim.PerformanceManager.MetricId(counterId=i, instance="") for i in ids
-        ]
+        metric_ids = [vim.PerformanceManager.MetricId(counterId=i, instance="") for i in ids]
 
         spec = vim.PerformanceManager.QuerySpec(
             entity=entity,
@@ -94,9 +92,7 @@ class VSphere:
         if not results or not results[0].value:
             return {}
 
-        id_to_name = {
-            self._counter_ids[n]: n for n in counter_names if n in self._counter_ids
-        }
+        id_to_name = {self._counter_ids[n]: n for n in counter_names if n in self._counter_ids}
         output = {}
         for val in results[0].value:
             name = id_to_name.get(val.id.counterId)
