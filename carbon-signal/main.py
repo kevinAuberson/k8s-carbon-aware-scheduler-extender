@@ -162,8 +162,8 @@ def build_signal(emaps, vsphere, metrics, node_mapping):
           for point in raw_forecast
       ]
     except Exception as e:
-      print(f"[WARN] Forecast unavailable: {e}")
-      forecast_24h = []
+        print(f"[WARN] Forecast unavailable: {e}")
+        forecast_24h = []
 
     return {
         "timestamp": datetime.now(UTC).isoformat(),
