@@ -155,12 +155,12 @@ def build_signal(emaps, vsphere, metrics, node_mapping):
     try:
         raw_forecast = emaps.get_forecast_24h()
         forecast_24h = [
-          {
-              "datetime": point["datetime"],
-              "carbon_intensity": point["carbonIntensity"],
-          }
-          for point in raw_forecast
-      ]
+            {
+                "datetime": point["datetime"],
+                "carbon_intensity": point["carbonIntensity"],
+            }
+            for point in raw_forecast
+        ]
     except Exception as e:
         print(f"[WARN] Forecast unavailable: {e}")
         forecast_24h = []

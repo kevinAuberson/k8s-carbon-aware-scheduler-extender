@@ -22,9 +22,7 @@ import main
 def test_load_node_mapping_valid_file(tmp_path):
     """A well-formed YAML file is parsed into a dict."""
     yaml_file = tmp_path / "mapping.yaml"
-    yaml_file.write_text(
-        "mapping:\n  k8s-node-1: vsphere-vm-1\n  k8s-node-2: vsphere-vm-2\n"
-    )
+    yaml_file.write_text("mapping:\n  k8s-node-1: vsphere-vm-1\n  k8s-node-2: vsphere-vm-2\n")
 
     result = main.load_node_mapping(str(yaml_file))
 

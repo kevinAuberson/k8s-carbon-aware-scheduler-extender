@@ -84,10 +84,7 @@ class Kepler:
         if cached is not None:
             return cached
 
-        promql = (
-            "sum by (pod_name, container_namespace) "
-            "(rate(kepler_container_joules_total[1m]))"
-        )
+        promql = "sum by (pod_name, container_namespace) (rate(kepler_container_joules_total[1m]))"
         results = self._query(promql)
 
         pods = []
