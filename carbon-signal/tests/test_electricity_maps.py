@@ -9,13 +9,13 @@ Description: Unit tests for the Electricity Maps client. The HTTP layer
 """
 
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("EMAPS_TOKEN", "test-token")
 os.environ.setdefault("EMAPS_ZONE", "CH")
 
-from electricity_maps import ElectricityMaps
 from cache import cache
+from electricity_maps import ElectricityMaps
 
 
 def _fake_response(json_payload):

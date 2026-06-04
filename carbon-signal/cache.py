@@ -2,7 +2,8 @@
 File:           cache.py
 Author:         Kevin Auberson
 Created:        2026-05-10
-Description:    In-memory TTL cache used by all collectors to avoid hammering external APIs on every request.
+Description:    In-memory TTL cache used by all collectors to avoid hammering external APIs
+                on every request.
 """
 
 import time

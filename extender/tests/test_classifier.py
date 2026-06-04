@@ -1,6 +1,4 @@
-import pytest
 from workload_classifier import CarbonClass, classify
-
 
 # ─── Override par label explicite ─────────────────────────────
 

@@ -25,11 +25,11 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            - name: SCORES_FILE
-              value: /etc/extender/scores.json
+            - name: SIGNAL_FILE
+              value: /etc/carbon-signal/signal.json
           volumeMounts:
             - name: scores
-              mountPath: /etc/extender
+              mountPath: /etc/carbon-signal
               readOnly: true
           readinessProbe:
             httpGet:
@@ -43,6 +43,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
       volumes:
-        - name: scores
+        - name: carbon-signal
           configMap:
-            name: carbon-extender-scores
+            name: carbon-signal

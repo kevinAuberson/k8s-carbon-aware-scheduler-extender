@@ -77,15 +77,12 @@ class CarbonScorer:
         return cost
 
     def _estimate_cpu_load(self, node: dict) -> float:
-        """
-        Estime le ratio CPU_load (0-1) à partir des millicores.
-        Hypothèse : un node typique a ~4000 millicores total.
-        À ajuster selon ton cluster réel.
-        """
-        # TODO : récupérer la capacité réelle via /api/v1/nodes
-        # Pour démarrer, on utilise une estimation
-        cpu_capacity_mc = 4000  # 4 cores
-        return min(node["cpu_millicores"] / cpu_capacity_mc, 1.0)
+        
+        capacity = node.get("cpu_capacity_millicores")
+        if capacity and capacity > 0:
+            return min(node["cpu_millicores"] / capacity, 1.0)
+        # fallback si la capacité n'est pas dans le signal
+        return min(node["cpu_millicores"] / 4000, 1.0)
 
     def _normalize_ci(self, ci: int) -> float:
         """

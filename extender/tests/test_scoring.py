@@ -1,8 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
 
-from scoring import CarbonScorer, NEUTRAL_SCORE
-from workload_classifier import CarbonClass
+import pytest
+
+from scoring import NEUTRAL_SCORE, CarbonScorer
 
 
 @pytest.fixture

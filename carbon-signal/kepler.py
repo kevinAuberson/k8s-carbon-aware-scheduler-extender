@@ -10,6 +10,7 @@ Description: Client that retrieves per-node and per-pod power consumption
 """
 
 import os
+
 import requests
 from cache import cache
 

@@ -1,179 +1,173 @@
-import json
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 
+def make_signal(ci=50, forecast=None, nodes=None):
+    return {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "grid_intensity_g_per_kwh": ci,
+        "forecast_24h": forecast or [],
+        "nodes": nodes or [
+            {"name": "node-a", "watts": 2.0, "cpu_millicores": 500},
+            {"name": "node-b", "watts": 4.0, "cpu_millicores": 1000},
+        ],
+    }
+
+
+def make_filter_payload(node_names, pod=None):
+    pod = pod or {
+        "metadata": {"name": "test-pod"},
+        "status": {"qosClass": "Burstable"},
+    }
+    return {
+        "Pod": pod,
+        "Nodes": {"items": [{"metadata": {"name": n}} for n in node_names]},
+    }
+
+
 @pytest.fixture
-def scores_file(tmp_path, monkeypatch):
-    """Crée un fichier scores.json temporaire et configure l'env."""
-    scores_data = {
-        "node-green": 10,
-        "node-yellow": 5,
-        "node-red": 0,
-    }
-    scores_path = tmp_path / "scores.json"
-    scores_path.write_text(json.dumps(scores_data))
-    monkeypatch.setenv("SCORES_FILE", str(scores_path))
-    return scores_data
+def mock_loader():
+    loader = MagicMock()
+    loader.load.return_value = make_signal(ci=50)
+    loader.age_seconds.return_value = 10.0
+    return loader
 
 
 @pytest.fixture
-def client(scores_file):
-    """Recharge le module extender avec le fichier de test, puis crée un client."""
-    # Reload pour que SCORES soit recalculé avec la nouvelle env var
-    import importlib
+def client(mock_loader):
+    with patch("extender.signal_loader", mock_loader), \
+        patch("extender.scorer.signal_loader", mock_loader), \
+        patch("extender.temporal.signal_loader", mock_loader):
+        import importlib
 
-    import extender
-
-    importlib.reload(extender)
-    return TestClient(extender.app)
-
-
-# ─── Tests basiques ───────────────────────────────────────────
-
-
-def test_healthz(client):
-    """L'endpoint /healthz doit répondre 200."""
-    response = client.get("/healthz")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+        import extender
+        importlib.reload(extender)
+        extender.signal_loader = mock_loader
+        extender.scorer.signal_loader = mock_loader
+        extender.temporal.signal_loader = mock_loader
+        yield TestClient(extender.app), mock_loader
 
 
-def test_get_config_returns_loaded_scores(client, scores_file):
-    """L'endpoint GET /config doit retourner les scores chargés depuis le fichier."""
-    response = client.get("/config")
-    assert response.status_code == 200
-    assert response.json() == {"scores": scores_file}
+# ─── /healthz ────────────────────────────────────────────────────
+
+def test_healthz_ok(client):
+    c, loader = client
+    resp = c.get("/healthz")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["signal_available"] is True
+    assert data["signal_age_seconds"] == 10.0
 
 
-def test_update_config(client):
-    """L'endpoint POST /config doit mettre à jour les scores en mémoire."""
-    new_scores = {"node-test": 42}
-    response = client.post("/config", json=new_scores)
-    assert response.status_code == 200
-    assert response.json() == {"scores": new_scores}
-
-    # Vérifier que le GET reflète le nouveau state
-    response = client.get("/config")
-    assert response.json() == {"scores": new_scores}
+def test_healthz_no_signal(client):
+    c, loader = client
+    loader.load.return_value = None
+    loader.age_seconds.return_value = None
+    resp = c.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json()["signal_available"] is False
 
 
-# ─── Tests de l'endpoint /prioritize ──────────────────────────
+# ─── /filter ─────────────────────────────────────────────────────
+
+def test_filter_passes_all_nodes_when_schedule_now(client):
+    """Grille verte → schedule_now → tous les nodes passent."""
+    c, loader = client
+    loader.load.return_value = make_signal(ci=20)  # sous GREEN_THRESHOLD=40
+    payload = make_filter_payload(["node-a", "node-b"])
+    resp = c.post("/filter", json=payload)
+    assert resp.status_code == 200
+    result = resp.json()
+    assert len(result["Nodes"]["items"]) == 2
+    assert result["FailedNodes"] == {}
 
 
-def test_prioritize_returns_correct_scores(client):
-    """L'endpoint /prioritize doit retourner les bons scores pour chaque node."""
-    payload = {
-        "Pod": {"metadata": {"name": "test-pod"}},
-        "NodeNames": ["node-green", "node-yellow", "node-red"],
-    }
-    response = client.post("/prioritize", json=payload)
-    assert response.status_code == 200
-
-    result = response.json()["HostPriorityList"]
-    assert len(result) == 3
-
-    scores_by_host = {item["Host"]: item["Score"] for item in result}
-    assert scores_by_host["node-green"] == 10
-    assert scores_by_host["node-yellow"] == 5
-    assert scores_by_host["node-red"] == 0
-
-
-def test_prioritize_unknown_node_gets_zero(client):
-    """Un node inconnu doit avoir un score de 0."""
-    payload = {
-        "Pod": {"metadata": {"name": "test-pod"}},
-        "NodeNames": ["node-inconnu"],
-    }
-    response = client.post("/prioritize", json=payload)
-    assert response.status_code == 200
-    assert response.json()["HostPriorityList"][0]["Score"] == 0
-
-
-def test_prioritize_handles_nodes_items_format(client):
-    """L'endpoint /prioritize doit aussi accepter le format Nodes.items."""
-    payload = {
-        "Pod": {"metadata": {"name": "test-pod"}},
-        "Nodes": {
-            "items": [
-                {"metadata": {"name": "node-green"}},
-                {"metadata": {"name": "node-red"}},
-            ]
+def test_filter_delays_besteffort_on_red_grid(client):
+    """Grille rouge + best-effort → DELAY → tous les nodes dans FailedNodes."""
+    c, loader = client
+    loader.load.return_value = make_signal(ci=85)  # > DIRTY_THRESHOLD=70
+    be_pod = {
+        "metadata": {
+            "name": "be-pod",
+            "creationTimestamp": datetime.now(UTC).isoformat(),
+            "annotations": {},
+            "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
         },
+        "status": {"qosClass": "BestEffort"},
     }
-    response = client.post("/prioritize", json=payload)
-    assert response.status_code == 200
-    assert len(response.json()["HostPriorityList"]) == 2
+    payload = make_filter_payload(["node-a", "node-b"], pod=be_pod)
+    resp = c.post("/filter", json=payload)
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["Nodes"]["items"] == []
+    assert "node-a" in result["FailedNodes"]
+    assert "carbon-aware delay" in result["FailedNodes"]["node-a"]
 
 
-# ─── Tests de l'endpoint /filter ──────────────────────────────
+def test_filter_never_delays_latency_sensitive(client):
+    """Deployment Guaranteed → latency-sensitive → jamais retardé."""
+    c, loader = client
+    loader.load.return_value = make_signal(ci=120)
+    ls_pod = {
+        "metadata": {
+            "name": "web",
+            "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
+        },
+        "status": {"qosClass": "Guaranteed"},
+    }
+    payload = make_filter_payload(["node-a"], pod=ls_pod)
+    resp = c.post("/filter", json=payload)
+    assert resp.json()["Nodes"]["items"] != []
 
 
-def test_filter_blocks_zero_score_nodes(client):
-    """L'endpoint /filter doit bloquer les nodes avec un score de 0."""
+# ─── /prioritize ─────────────────────────────────────────────────
+
+def test_prioritize_scores_all_nodes(client):
+    c, loader = client
+    pod = {"metadata": {"name": "p"}, "status": {"qosClass": "Burstable"}}
     payload = {
-        "Nodes": {
-            "items": [
-                {"metadata": {"name": "node-green"}},  # score 10 → PASS
-                {"metadata": {"name": "node-red"}},  # score 0 → BLOCK
-                {"metadata": {"name": "node-inconnu"}},  # score 0 → BLOCK
-            ]
-        }
+        "Pod": pod,
+        "NodeNames": ["node-a", "node-b"],
     }
-    response = client.post("/filter", json=payload)
-    assert response.status_code == 200
+    resp = c.post("/prioritize", json=payload)
+    assert resp.status_code == 200
+    results = resp.json()["HostPriorityList"]
+    assert len(results) == 2
+    hosts = {r["Host"] for r in results}
+    assert hosts == {"node-a", "node-b"}
+    for r in results:
+        assert 0 <= r["Score"] <= 100
 
-    result = response.json()
-    assert len(result["Nodes"]["items"]) == 1
-    assert result["Nodes"]["items"][0]["metadata"]["name"] == "node-green"
 
-
-def test_filter_passes_positive_score_nodes(client):
-    """L'endpoint /filter doit laisser passer les nodes avec un score > 0."""
+def test_prioritize_no_signal_returns_neutral(client):
+    c, loader = client
+    loader.load.return_value = None
     payload = {
-        "Nodes": {
-            "items": [
-                {"metadata": {"name": "node-green"}},
-                {"metadata": {"name": "node-yellow"}},
-            ]
-        }
+        "Pod": {"metadata": {"name": "p"}, "status": {"qosClass": "Burstable"}},
+        "NodeNames": ["node-a"],
     }
-    response = client.post("/filter", json=payload)
-    assert response.status_code == 200
-    assert len(response.json()["Nodes"]["items"]) == 2
+    resp = c.post("/prioritize", json=payload)
+    assert resp.json()["HostPriorityList"][0]["Score"] == 50
 
 
-def test_filter_with_no_nodes(client):
-    """L'endpoint /filter doit gérer une liste vide."""
-    payload = {"Nodes": {"items": []}}
-    response = client.post("/filter", json=payload)
-    assert response.status_code == 200
-    assert response.json()["Nodes"]["items"] == []
+# ─── /debug/forecast ─────────────────────────────────────────────
+
+def test_debug_forecast_no_signal(client):
+    c, loader = client
+    loader.load.return_value = None
+    resp = c.get("/debug/forecast")
+    assert resp.status_code == 200
+    assert "error" in resp.json()
 
 
-# ─── Test du loader de scores ─────────────────────────────────
-
-
-def test_load_scores_handles_missing_file(monkeypatch, tmp_path):
-    """load_scores() doit retourner {} si le fichier n'existe pas."""
-    monkeypatch.setenv("SCORES_FILE", str(tmp_path / "inexistant.json"))
-    import importlib
-
-    import extender
-
-    importlib.reload(extender)
-    assert extender.SCORES == {}
-
-
-def test_load_scores_handles_invalid_json(monkeypatch, tmp_path):
-    """load_scores() doit retourner {} si le JSON est invalide."""
-    bad_file = tmp_path / "bad.json"
-    bad_file.write_text("{ not valid json")
-    monkeypatch.setenv("SCORES_FILE", str(bad_file))
-    import importlib
-
-    import extender
-
-    importlib.reload(extender)
-    assert extender.SCORES == {}
+def test_debug_forecast_with_signal(client):
+    c, loader = client
+    resp = c.get("/debug/forecast")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "current" in data
+    assert "thresholds" in data

@@ -1,15 +1,15 @@
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from temporal import TemporalScheduler, DelayDecision
+import pytest
 
+from temporal import DelayDecision, TemporalScheduler
 
 # ─── Fixtures ────────────────────────────────────────────────────
 
 def make_forecast(current_ci, hourly_values):
     """Génère un forecast à partir d'une liste d'intensités horaires."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         {
             "datetime": (now + timedelta(hours=i + 1)).isoformat(),
@@ -21,7 +21,7 @@ def make_forecast(current_ci, hourly_values):
 
 def make_signal(ci, forecast=None):
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "grid_intensity_g_per_kwh": ci,
         "forecast_24h": forecast or [],
         "nodes": [],
@@ -29,7 +29,7 @@ def make_signal(ci, forecast=None):
 
 
 def make_pod_besteffort(annotations=None, age_hours=0):
-    created = (datetime.now(timezone.utc) - timedelta(hours=age_hours)).isoformat()
+    created = (datetime.now(UTC) - timedelta(hours=age_hours)).isoformat()
     return {
         "metadata": {
             "name": "test-be",
@@ -42,7 +42,7 @@ def make_pod_besteffort(annotations=None, age_hours=0):
 
 
 def make_pod_batch(annotations=None, age_hours=0):
-    created = (datetime.now(timezone.utc) - timedelta(hours=age_hours)).isoformat()
+    created = (datetime.now(UTC) - timedelta(hours=age_hours)).isoformat()
     return {
         "metadata": {
             "name": "test-batch",
@@ -155,7 +155,7 @@ def test_deadline_in_past_forces_schedule(scheduler):
     forecast = make_forecast(80, [60, 40, 30])
     loader.load.return_value = make_signal(ci=80, forecast=forecast)
 
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     pod = make_pod_besteffort(annotations={"carbon-aware/deadline": past})
 
     decision, reason = sched.decide(pod)
@@ -170,7 +170,7 @@ def test_deadline_excludes_far_future_optimal(scheduler):
     forecast = make_forecast(70, [65, 60, 55, 50, 30])  # min à +5h (30)
     loader.load.return_value = make_signal(ci=70, forecast=forecast)
 
-    deadline = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    deadline = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
     pod = make_pod_besteffort(annotations={"carbon-aware/deadline": deadline})
 
     decision, reason = sched.decide(pod)
