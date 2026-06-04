@@ -1,91 +1,151 @@
-import json
+"""Carbon-aware scheduler extender — endpoints HTTP."""
 import logging
-import os
-from pathlib import Path
 
 from fastapi import FastAPI, Request
+
+from scoring import CarbonScorer, NEUTRAL_SCORE
+from signal_loader import SignalLoader
+from temporal import TemporalScheduler, DelayDecision
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extender")
 
 app = FastAPI()
 
-# Chemin du fichier de scores (montée via ConfigMap en prod)
-SCORES_FILE = os.getenv("SCORES_FILE", "/etc/extender/scores.json")
-
-
-def load_scores() -> dict:
-    """Charge les scores depuis le fichier monté en ConfigMap."""
-    try:
-        return json.loads(Path(SCORES_FILE).read_text())
-    except FileNotFoundError:
-        log.warning(f"Fichier {SCORES_FILE} introuvable, scores vides")
-        return {}
-    except json.JSONDecodeError as e:
-        log.error(f"JSON invalide dans {SCORES_FILE}: {e}")
-        return {}
-
-
-SCORES = load_scores()
-log.info(f"Scores chargés au démarrage : {SCORES}")
-
-
-@app.post("/prioritize")
-async def prioritize(request: Request):
-    body = await request.json()
-    node_names = body.get("NodeNames") or [
-        n["metadata"]["name"] for n in body.get("Nodes", {}).get("items", [])
-    ]
-    pod_name = body.get("Pod", {}).get("metadata", {}).get("name", "?")
-
-    results = []
-    for name in node_names:
-        score = SCORES.get(name, 0)
-        results.append({"Host": name, "Score": score})
-        log.info(f"Pod {pod_name} -> {name}: score={score}")
-
-    if results:
-        best = max(results, key=lambda x: x["Score"])
-        log.info(f">>> Best node for {pod_name}: {best['Host']} (score={best['Score']})")
-
-    return {"HostPriorityList": results}
+# Singletons
+signal_loader = SignalLoader()
+scorer = CarbonScorer(signal_loader)
+temporal = TemporalScheduler(signal_loader)
 
 
 @app.post("/filter")
 async def filter_nodes(request: Request):
+    """
+    Filtre les nodes éligibles. Peut aussi retarder le scheduling
+    d'un pod en retournant tous les nodes dans FailedNodes.
+    """
     body = await request.json()
+    pod = body.get("Pod", {})
+    pod_name = pod.get("metadata", {}).get("name", "?")
     nodes = body.get("Nodes", {}).get("items", [])
+    node_names_str = [n["metadata"]["name"] for n in nodes]
 
-    filtered = []
-    for node in nodes:
-        name = node["metadata"]["name"]
-        score = SCORES.get(name, 0)
-        if score > 0:
-            filtered.append(node)
-            log.info(f"FILTER: {name} -> PASS (score={score})")
-        else:
-            log.info(f"FILTER: {name} -> BLOCKED (score={score})")
+    # Décision temporelle : on schedule maintenant ou on attend ?
+    decision, reason = temporal.decide(pod)
+    log.info(f"Pod {pod_name}: {decision.value} ({reason})")
 
+    if decision == DelayDecision.DELAY:
+        # On bloque tous les nodes → le pod reste en Pending
+        return {
+            "Nodes": {"items": []},
+            "FailedNodes": {
+                name: f"carbon-aware delay: {reason}"
+                for name in node_names_str
+            },
+            "Error": "",
+        }
+
+    # SCHEDULE_NOW : on laisse passer tous les nodes, le scoring fera le reste
     return {
-        "Nodes": {"items": filtered},
+        "Nodes": {"items": nodes},
         "FailedNodes": {},
         "Error": "",
     }
 
 
-@app.post("/config")
-async def update_scores(new_scores: dict):
-    global SCORES
-    SCORES = new_scores
-    log.info(f"Scores updated: {SCORES}")
-    return {"scores": SCORES}
+@app.post("/prioritize")
+async def prioritize(request: Request):
+    # ... ton code existant (inchangé)
+    body = await request.json()
+    pod = body.get("Pod", {})
+    pod_name = pod.get("metadata", {}).get("name", "?")
+    node_names = body.get("NodeNames") or [
+        n["metadata"]["name"]
+        for n in body.get("Nodes", {}).get("items", [])
+    ]
 
+    scores = scorer.score_nodes(pod, node_names)
+    results = [
+        {"Host": name, "Score": scores.get(name, NEUTRAL_SCORE)}
+        for name in node_names
+    ]
 
-@app.get("/config")
-async def get_scores():
-    return {"scores": SCORES}
+    if results:
+        best = max(results, key=lambda x: x["Score"])
+        log.info(f"Pod {pod_name} → best: {best['Host']} (score={best['Score']})")
+
+    return {"HostPriorityList": results}
 
 
 @app.get("/healthz")
 async def health():
-    return {"status": "ok"}
+    signal = signal_loader.load()
+    age = signal_loader.age_seconds()
+    return {
+        "status": "ok",
+        "signal_available": signal is not None,
+        "signal_age_seconds": age,
+        "green_threshold": temporal.green_threshold,
+    }
+
+
+@app.get("/debug/decide")
+async def debug_decide():
+    """Affiche la décision pour un pod fictif (debug)."""
+    fake_pods = {
+        "deployment-pod": {
+            "metadata": {
+                "name": "test",
+                "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
+            },
+            "status": {"qosClass": "Burstable"},
+        },
+        "batch-rigid": {
+            "metadata": {
+                "name": "test",
+                "ownerReferences": [{"kind": "Job", "controller": True}],
+            },
+            "status": {"qosClass": "Burstable"},
+        },
+        "batch-flexible": {
+            "metadata": {
+                "name": "test",
+                "annotations": {"carbon-aware/flexible": "true"},
+                "ownerReferences": [{"kind": "Job", "controller": True}],
+            },
+            "status": {"qosClass": "Burstable"},
+        },
+        "best-effort": {
+            "metadata": {
+                "name": "test",
+                "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
+            },
+            "status": {"qosClass": "BestEffort"},
+        },
+    }
+    return {
+        name: {"decision": d[0].value, "reason": d[1]}
+        for name, pod in fake_pods.items()
+        for d in [temporal.decide(pod)]
+    }
+
+@app.get("/debug/forecast")
+async def debug_forecast():
+    """Affiche le forecast et le moment optimal."""
+    signal = signal_loader.load()
+    if not signal:
+        return {"error": "no signal"}
+
+    optimal = temporal.find_optimal_window()
+    return {
+        "current": {
+            "datetime": signal["timestamp"],
+            "carbon_intensity": signal["grid_intensity_g_per_kwh"],
+        },
+        "forecast_24h": signal.get("forecast_24h", []),
+        "optimal_window": optimal,
+        "thresholds": {
+            "green": temporal.green_threshold,
+            "dirty": temporal.dirty_threshold,
+        },
+    }

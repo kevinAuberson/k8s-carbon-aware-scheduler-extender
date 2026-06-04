@@ -8,8 +8,8 @@ Description: Client for the Electricity Maps API. Fetches current grid
 """
 
 import os
-import requests
 
+import requests
 from cache import cache
 
 
@@ -41,7 +41,9 @@ class ElectricityMaps:
         if cached is not None:
             return cached
 
-        url = f"{self.base_url}/carbon-intensity/latest?zone={self.zone}"
+        url = (f"{self.base_url}/carbon-intensity/latest"
+               f"?zone={self.zone}&emissionFactorType=lifecycle"
+        )
         response = requests.get(url, headers=self._headers(), timeout=10)
         response.raise_for_status()
         data = response.json()
@@ -71,7 +73,9 @@ class ElectricityMaps:
         if cached is not None:
             return cached
 
-        url = f"{self.base_url}/carbon-intensity/forecast?zone={self.zone}"
+        url = (f"{self.base_url}/carbon-intensity/forecast"
+               f"?zone={self.zone}&emissionFactorType=lifecycle"
+        )
         response = requests.get(url, headers=self._headers(), timeout=10)
         response.raise_for_status()
 

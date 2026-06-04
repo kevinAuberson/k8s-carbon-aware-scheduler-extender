@@ -12,8 +12,9 @@ Description: Client for the Kubernetes metrics-server. Retrieves CPU and
 
 import os
 import re
-from kubernetes import client
+
 from cache import cache
+from kubernetes import client
 
 
 class MetricsServer:

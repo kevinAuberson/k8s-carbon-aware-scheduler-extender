@@ -8,7 +8,8 @@ Description: Unit tests for the metrics-server client, focusing on the
              aggregation logic (with a mocked Kubernetes API).
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from metrics_server import MetricsServer
 
 

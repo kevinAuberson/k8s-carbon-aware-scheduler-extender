@@ -15,8 +15,8 @@ os.environ.setdefault("VCENTER_HOST", "fake-vcenter")
 os.environ.setdefault("VCENTER_USER", "fake-user")
 os.environ.setdefault("VCENTER_PASSWORD", "fake-pass")
 
-from vsphere import VSphere
 from cache import cache
+from vsphere import VSphere
 
 
 def _fake_host(name, watts, cpu_mhz, num_cores):

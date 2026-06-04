@@ -4,7 +4,9 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
-
+.pytest_cache/
+.ruff_cache/
+pyproject.toml
 # IDE
 .vscode/
 

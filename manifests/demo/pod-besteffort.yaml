@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-besteffort
+  labels:
+    carbon-class: best-effort
+spec:
+  schedulerName: carbon-aware
+  containers:
+    - name: app
+      image: busybox
+      command: ["sleep", "3600"]

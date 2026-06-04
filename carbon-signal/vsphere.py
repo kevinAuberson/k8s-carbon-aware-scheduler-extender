@@ -7,12 +7,13 @@ Description: Client for vCenter that retrieves the real measured power of
              consumption of running VMs based on the CPU MHz ratio.
 """
 
+import atexit
 import os
 import ssl
-import atexit
-from pyVim.connect import SmartConnect, Disconnect
-from pyVmomi import vim
+
 from cache import cache
+from pyVim.connect import Disconnect, SmartConnect
+from pyVmomi import vim
 
 
 class VSphere:
@@ -34,7 +35,8 @@ class VSphere:
         """
         Connect to vCenter once and cache the session.
 
-        Also builds a name -> ID mapping for the performance counters we will query later (CPU, memory, power).
+        Also builds a name -> ID mapping for the performance counters
+        we will query later (CPU, memory, power).
         """
         if self._si is not None:
             return

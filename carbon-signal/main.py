@@ -14,19 +14,18 @@ Description: Entry point of the Carbon Signal Aggregator. Polls all data
              - Grid carbon intensity -> Electricity Maps
 """
 
-import os
 import json
-import time
+import os
 import signal
+import time
+from datetime import UTC, datetime
+
 import yaml
-from datetime import datetime, timezone
-
 from dotenv import load_dotenv
-from kubernetes import client, config
-
 from electricity_maps import ElectricityMaps
-from vsphere import VSphere
+from kubernetes import client, config
 from metrics_server import MetricsServer
+from vsphere import VSphere
 
 # Load environment variables before any other import that depends on them
 load_dotenv()
@@ -66,7 +65,7 @@ def load_node_mapping(path):
         is missing or invalid.
     """
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             data = yaml.safe_load(f)
         return data.get("mapping", {})
     except FileNotFoundError:
@@ -153,11 +152,24 @@ def build_signal(emaps, vsphere, metrics, node_mapping):
                 "memory_mib": usage["memory_mib"],
             }
         )
+    try:
+        raw_forecast = emaps.get_forecast_24h()
+        forecast_24h = [
+          {
+              "datetime": point["datetime"],
+              "carbon_intensity": point["carbonIntensity"],
+          }
+          for point in raw_forecast
+      ]
+    except Exception as e:
+        print(f"[WARN] Forecast unavailable: {e}")
+        forecast_24h = []
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "zone": zone,
         "grid_intensity_g_per_kwh": grid_intensity,
+        "forecast_24h": forecast_24h,
         "nodes": nodes,
     }
 
