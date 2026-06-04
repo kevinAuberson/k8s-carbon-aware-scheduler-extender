@@ -28,7 +28,7 @@ spec:
             - name: SIGNAL_FILE
               value: /etc/carbon-signal/signal.json
           volumeMounts:
-            - name: scores
+            - name: carbon-signal
               mountPath: /etc/carbon-signal
               readOnly: true
           readinessProbe:
