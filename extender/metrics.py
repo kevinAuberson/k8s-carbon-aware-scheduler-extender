@@ -1,0 +1,55 @@
+"""Définitions des métriques Prometheus exposées par l'extender."""
+
+from prometheus_client import Counter, Gauge, Histogram
+
+# ─── Décisions de scheduling (/filter) ────────────────────────────────────────
+
+SCHEDULING_DECISIONS = Counter(
+    "carbon_scheduling_decisions_total",
+    "Total scheduling decisions made by the extender",
+    ["carbon_class", "decision"],  # decision: schedule_now | delay
+)
+
+# Intensité carbone au moment de la décision — permet de comparer la CI
+# moyenne à laquelle carbon-aware vs default scheduler place les pods
+CI_AT_DECISION = Histogram(
+    "carbon_ci_at_decision_g_per_kwh",
+    "Grid carbon intensity (gCO2eq/kWh) at the moment of the scheduling decision",
+    ["carbon_class", "decision"],
+    buckets=[10, 20, 30, 40, 50, 60, 70, 80, 100, 150, 200, 300],
+)
+
+# Gain potentiel lors d'un délai (CI_actuelle - CI_optimale)
+DELAY_GAIN = Histogram(
+    "carbon_delay_gain_g_per_kwh",
+    "Potential CI gain (gCO2eq/kWh) when a pod is delayed to a greener window",
+    ["carbon_class"],
+    buckets=[5, 10, 15, 20, 30, 40, 50, 75, 100],
+)
+
+# ─── Scoring des nœuds (/prioritize) ──────────────────────────────────────────
+
+NODE_SCORE = Gauge(
+    "carbon_node_score",
+    "Carbon score (0-100) assigned to a node during last prioritization",
+    ["node", "carbon_class"],
+)
+
+MARGINAL_COST = Histogram(
+    "carbon_marginal_cost",
+    "Marginal carbon cost of placing a pod on a node",
+    ["node"],
+    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0],
+)
+
+# ─── État du signal ────────────────────────────────────────────────────────────
+
+GRID_INTENSITY = Gauge(
+    "carbon_grid_intensity_current_g_per_kwh",
+    "Current grid carbon intensity from the carbon-signal ConfigMap",
+)
+
+SIGNAL_AGE = Gauge(
+    "carbon_signal_age_seconds",
+    "Age in seconds of the last loaded carbon signal",
+)

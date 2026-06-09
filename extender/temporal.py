@@ -26,8 +26,9 @@ log = logging.getLogger("temporal")
 GREEN_THRESHOLD = int(os.getenv("GREEN_THRESHOLD_G_PER_KWH", "40"))
 DIRTY_THRESHOLD = int(os.getenv("DIRTY_THRESHOLD_G_PER_KWH", "70"))
 
-# Délai max par défaut si le pod n'a pas d'annotation deadline/max-delay
-DEFAULT_MAX_DELAY_HOURS = int(os.getenv("DEFAULT_MAX_DELAY_HOURS", "6"))
+# Délai max par défaut = horizon du forecast (24h)
+# Un pod flexible ne sera jamais retardé plus de 24h
+DEFAULT_MAX_DELAY_HOURS = int(os.getenv("DEFAULT_MAX_DELAY_HOURS", "24"))
 
 # Gain minimum (gCO₂eq/kWh) pour qu'il vaille la peine d'attendre
 # Évite de retarder un pod pour gagner 2 gCO₂/kWh = négligeable
@@ -235,18 +236,23 @@ class TemporalScheduler:
             log.warning(f"Invalid deadline '{deadline_str}': {e}")
             return None
 
-    def _compute_max_delay_end(self, pod: dict) -> datetime | None:
-        """Calcule la fin du max-delay = creationTimestamp + max_delay_hours."""
+    def _compute_max_delay_end(self, pod: dict) -> datetime:
+        """Calcule la fin du max-delay = creationTimestamp + max_delay_hours.
+
+        Retourne toujours une datetime pour garantir qu'aucun pod n'attend
+        indéfiniment. Si creationTimestamp est absent, la fenêtre part de now.
+        """
         metadata = pod.get("metadata", {})
         created_str = metadata.get("creationTimestamp")
-        if not created_str:
-            return None
-        try:
-            created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=UTC)
-        except ValueError:
-            return None
+        if created_str:
+            try:
+                created = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=UTC)
+            except ValueError:
+                created = datetime.now(UTC)
+        else:
+            created = datetime.now(UTC)
 
         custom = metadata.get("annotations", {}).get(ANN_MAX_DELAY)
         max_hours = DEFAULT_MAX_DELAY_HOURS

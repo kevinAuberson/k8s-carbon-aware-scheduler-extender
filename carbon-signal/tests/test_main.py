@@ -56,6 +56,7 @@ def _make_mocks(grid_intensity=92, vm_watts=50.0, cpu=500, mem=1024):
         "carbon_intensity": grid_intensity,
         "zone": "CH",
     }
+    emaps.get_forecast_24h.return_value = []
 
     vsphere = MagicMock()
     vsphere.get_vm_estimated_watts.return_value = [

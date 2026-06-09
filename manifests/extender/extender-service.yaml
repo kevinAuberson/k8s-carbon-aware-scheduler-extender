@@ -3,6 +3,10 @@ kind: Service
 metadata:
   name: carbon-extender
   namespace: carbon-scheduler
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
 spec:
   selector:
     app: carbon-extender

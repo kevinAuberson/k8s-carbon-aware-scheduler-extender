@@ -81,7 +81,12 @@ def classify(pod: dict) -> CarbonClass:
         return CarbonClass.BATCH
 
     # 2e. Fallback : pod orphelin ou kind inconnu
-    log.warning(f"Pod {pod_name}: unknown owner '{owner_kind}', defaulting to best-effort")
+    # QoS discrimine : Guaranteed/Burstable → standalone avec resources → latency-sensitive
+    if qos in ("Guaranteed", "Burstable"):
+        log.info(f"Pod {pod_name}: orphan/unknown owner + QoS={qos} → latency-sensitive")
+        return CarbonClass.LATENCY_SENSITIVE
+
+    log.warning(f"Pod {pod_name}: orphan/unknown owner + QoS BestEffort → best-effort")
     return CarbonClass.BEST_EFFORT
 
 

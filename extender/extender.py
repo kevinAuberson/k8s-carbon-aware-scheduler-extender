@@ -3,15 +3,27 @@
 import logging
 
 from fastapi import FastAPI, Request
+from prometheus_client import make_asgi_app
 
+from metrics import (
+    CI_AT_DECISION,
+    DELAY_GAIN,
+    GRID_INTENSITY,
+    MARGINAL_COST,
+    NODE_SCORE,
+    SCHEDULING_DECISIONS,
+    SIGNAL_AGE,
+)
 from scoring import NEUTRAL_SCORE, CarbonScorer
 from signal_loader import SignalLoader
 from temporal import DelayDecision, TemporalScheduler
+from workload_classifier import classify
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extender")
 
 app = FastAPI()
+app.mount("/metrics", make_asgi_app())
 
 # Singletons
 signal_loader = SignalLoader()
@@ -35,8 +47,21 @@ async def filter_nodes(request: Request):
     decision, reason = temporal.decide(pod)
     log.info(f"Pod {pod_name}: {decision.value} ({reason})")
 
+    carbon_class = classify(pod).value
+    signal = signal_loader.load()
+    ci = signal["grid_intensity_g_per_kwh"] if signal else 0.0
+
+    SCHEDULING_DECISIONS.labels(carbon_class=carbon_class, decision=decision.value).inc()
+    CI_AT_DECISION.labels(carbon_class=carbon_class, decision=decision.value).observe(ci)
+    GRID_INTENSITY.set(ci)
+    SIGNAL_AGE.set(signal_loader.age_seconds() or 0.0)
+
     if decision == DelayDecision.DELAY:
-        # On bloque tous les nodes → le pod reste en Pending
+        # Extraire le gain depuis le forecast si disponible
+        optimal = temporal.find_optimal_window()
+        if optimal and optimal["potential_gain"] > 0:
+            DELAY_GAIN.labels(carbon_class=carbon_class).observe(optimal["potential_gain"])
+
         return {
             "Nodes": {"items": []},
             "FailedNodes": {name: f"carbon-aware delay: {reason}" for name in node_names_str},
@@ -63,6 +88,19 @@ async def prioritize(request: Request):
 
     scores = scorer.score_nodes(pod, node_names)
     results = [{"Host": name, "Score": scores.get(name, NEUTRAL_SCORE)} for name in node_names]
+
+    carbon_class = classify(pod).value
+    signal = signal_loader.load()
+
+    for name, score in scores.items():
+        NODE_SCORE.labels(node=name, carbon_class=carbon_class).set(score)
+
+    if signal:
+        for node_data in signal.get("nodes", []):
+            if node_data["name"] in scores:
+                MARGINAL_COST.labels(node=node_data["name"]).observe(
+                    node_data.get("co2_g_per_s", 0.0)
+                )
 
     if results:
         best = max(results, key=lambda x: x["Score"])

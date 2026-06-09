@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-auto-deployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-auto-deployment
+  template:
+    metadata:
+      labels:
+        app: demo-auto-deployment
+    spec:
+      schedulerName: carbon-aware
+      containers:
+        - name: app
+          image: busybox
+          command: ["sleep", "3600"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+---
+# Job sans label : owner=Job → batch, non flexible → schedule immédiatement
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-auto-job
+  namespace: default
+spec:
+  template:
+    spec:
+      schedulerName: carbon-aware
+      containers:
+        - name: app
+          image: busybox
+          command: ["sleep", "10"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+      restartPolicy: Never
+---
+# Job flexible : owner=Job + annotation flexible=true → batch flexible → retardé si CI > DIRTY (70)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-auto-job-flexible
+  namespace: default
+  annotations:
+    carbon-aware/flexible: "true"
+spec:
+  template:
+    spec:
+      schedulerName: carbon-aware
+      containers:
+        - name: app
+          image: busybox
+          command: ["sleep", "10"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+      restartPolicy: Never
+---
+# Pod orphelin sans resources : pas d'owner, QoS=BestEffort → best-effort → flexible par défaut → retardé si CI > GREEN (40)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-auto-pod-besteffort
+  namespace: default
+spec:
+  schedulerName: carbon-aware
+  containers:
+    - name: app
+      image: busybox
+      command: ["sleep", "3600"]
+---
+# Pod orphelin avec resources : pas d'owner, QoS=Guaranteed → latency-sensitive → schedule immédiat
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-auto-pod-latency
+  namespace: default
+spec:
+  schedulerName: carbon-aware
+  containers:
+    - name: app
+      image: busybox
+      command: ["sleep", "3600"]
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "64Mi"
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
