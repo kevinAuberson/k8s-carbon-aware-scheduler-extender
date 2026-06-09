@@ -194,8 +194,8 @@ def test_max_delay_exceeded_forces_schedule(scheduler):
     forecast = make_forecast(100, [80, 60, 40])
     loader.load.return_value = make_signal(ci=100, forecast=forecast)
 
-    # Pod créé il y a 8h, max-delay par défaut = 6h → expired
-    pod = make_pod_besteffort(age_hours=8)
+    # Pod créé il y a 25h, max-delay par défaut = 24h → expired
+    pod = make_pod_besteffort(age_hours=25)
     decision, reason = sched.decide(pod)
     assert decision == DelayDecision.SCHEDULE_NOW
     assert "deadline" in reason.lower() or "max-delay" in reason.lower()
