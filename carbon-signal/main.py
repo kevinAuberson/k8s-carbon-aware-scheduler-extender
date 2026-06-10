@@ -35,6 +35,11 @@ POLL_INTERVAL = 30
 NAMESPACE = "carbon-scheduler"
 CONFIGMAP_NAME = "carbon-signal"
 NODE_MAPPING_FILE = "node_mapping.yaml"
+THRESHOLDS_FILE = os.getenv("THRESHOLDS_FILE", "/app/thresholds.yaml")
+
+# Cap: prevents the dynamic green threshold from being unreasonably high
+# in carbon-intensive grids (e.g. DE in winter where P25 could be ~150)
+MAX_GREEN = float(os.getenv("MAX_GREEN_THRESHOLD_G_PER_KWH", "100"))
 
 # Global flag used by the shutdown handler
 running = True
@@ -51,6 +56,58 @@ def handle_shutdown(signum, frame):
     global running
     print(f"\nSignal {signum} received, shutting down...")
     running = False
+
+
+def load_monthly_thresholds(path: str) -> dict:
+    """
+    Load per-month green/dirty thresholds from a YAML file.
+
+    Returns a dict keyed by month number (1-12), or empty dict if the file
+    is missing (thresholds will fall back to dynamic forecast or env defaults).
+    """
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return {int(k): v for k, v in (data.get("thresholds") or {}).items()}
+    except FileNotFoundError:
+        return {}
+    except (yaml.YAMLError, ValueError) as e:
+        print(f"[WARN] Failed to parse thresholds file {path}: {e}")
+        return {}
+
+
+def compute_thresholds(
+    forecast_24h: list[dict],
+    monthly_table: dict,
+) -> tuple[float, float, str]:
+    """
+    Compute green/dirty thresholds with priority:
+      1. P25/P75 of the current 24h forecast  (dynamic, zone-agnostic)
+      2. Monthly P25/P75 from historical table (static fallback)
+
+    If neither source is available the last signal already in the ConfigMap
+    still holds valid thresholds — the extender reads those directly.
+
+    Returns (green, dirty, source) where source describes which tier was used.
+    """
+    # Priority 1: dynamic from forecast
+    if forecast_24h:
+        ci_values = sorted(p["carbon_intensity"] for p in forecast_24h)
+        n = len(ci_values)
+        green = ci_values[int(n * 0.25)]
+        dirty = ci_values[int(n * 0.75)]
+        green = min(green, MAX_GREEN)
+        return round(green, 1), round(dirty, 1), "forecast_p25_p75"
+
+    # Priority 2: monthly historical table
+    month = datetime.now(UTC).month
+    entry = monthly_table.get(month)
+    if entry and entry.get("green") and entry.get("dirty"):
+        return float(entry["green"]), float(entry["dirty"]), f"monthly_table_month_{month}"
+
+    # No source available — caller should not overwrite the existing ConfigMap
+    # with stale thresholds; return None to signal this condition
+    return None, None, "unavailable"
 
 
 def load_node_mapping(path):
@@ -76,7 +133,7 @@ def load_node_mapping(path):
         return {}
 
 
-def build_signal(emaps, vsphere, metrics, node_mapping):
+def build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds=None):
     """
     Collect data from all sources and build a complete carbon signal.
 
@@ -165,13 +222,30 @@ def build_signal(emaps, vsphere, metrics, node_mapping):
         print(f"[WARN] Forecast unavailable: {e}")
         forecast_24h = []
 
-    return {
+    green, dirty, threshold_source = compute_thresholds(
+        forecast_24h, monthly_thresholds or {}
+    )
+
+    signal: dict = {
         "timestamp": datetime.now(UTC).isoformat(),
         "zone": zone,
         "grid_intensity_g_per_kwh": grid_intensity,
         "forecast_24h": forecast_24h,
         "nodes": nodes,
     }
+
+    if green is not None and dirty is not None:
+        signal["green_threshold_g_per_kwh"] = green
+        signal["dirty_threshold_g_per_kwh"] = dirty
+        signal["threshold_source"] = threshold_source
+        print(f"[THRESHOLDS] source={threshold_source} green={green} dirty={dirty}")
+    else:
+        # Both forecast and monthly table unavailable — leave thresholds out of
+        # the signal so the extender keeps using the last valid values from the
+        # previous ConfigMap write.
+        print("[THRESHOLDS] source=unavailable — thresholds omitted, extender uses previous values")
+
+    return signal
 
 
 def write_configmap(signal_data):
@@ -227,6 +301,13 @@ def main():
     node_mapping = load_node_mapping(NODE_MAPPING_FILE)
     print(f"Loaded {len(node_mapping)} node mappings from {NODE_MAPPING_FILE}")
 
+    # Load monthly thresholds (optional — falls back to forecast or env defaults)
+    monthly_thresholds = load_monthly_thresholds(THRESHOLDS_FILE)
+    if monthly_thresholds:
+        print(f"Loaded monthly thresholds from {THRESHOLDS_FILE}")
+    else:
+        print(f"[INFO] No thresholds file at {THRESHOLDS_FILE}, will use forecast P25/P75 or env defaults")
+
     # Instantiate the source clients once (kept alive for the whole loop)
     emaps = ElectricityMaps()
     vsphere = VSphere()
@@ -236,7 +317,7 @@ def main():
 
     while running:
         try:
-            data = build_signal(emaps, vsphere, metrics, node_mapping)
+            data = build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds)
             write_configmap(data)
             print(
                 f"[{data['timestamp']}] "

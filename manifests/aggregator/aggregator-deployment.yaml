@@ -48,6 +48,10 @@ spec:
               mountPath: /app/node_mapping.yaml
               subPath: node_mapping.yaml
               readOnly: true
+            - name: thresholds
+              mountPath: /app/thresholds.yaml
+              subPath: thresholds.yaml
+              readOnly: true
 
           resources:
             requests:
@@ -69,3 +73,6 @@ spec:
         - name: node-mapping
           configMap:
             name: carbon-signal-node-mapping
+        - name: thresholds
+          configMap:
+            name: carbon-signal-thresholds

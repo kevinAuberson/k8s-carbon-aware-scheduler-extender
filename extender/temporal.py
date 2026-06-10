@@ -101,9 +101,13 @@ class TemporalScheduler:
 
         current_ci = signal["grid_intensity_g_per_kwh"]
 
+        # Seuils dynamiques : signal > env vars (fallback)
+        green_threshold = signal.get("green_threshold_g_per_kwh", self.green_threshold)
+        dirty_threshold = signal.get("dirty_threshold_g_per_kwh", self.dirty_threshold)
+
         # 4. Si déjà très propre → schedule
-        if current_ci <= self.green_threshold:
-            return self._now(f"grid already green ({current_ci} ≤ {self.green_threshold})")
+        if current_ci <= green_threshold:
+            return self._now(f"grid already green ({current_ci} ≤ {green_threshold:.0f})")
 
         # 5. Vérifier la deadline (atteinte ?)
         deadline = self._parse_deadline(pod)
@@ -117,10 +121,10 @@ class TemporalScheduler:
         forecast = signal.get("forecast_24h", [])
         if not forecast:
             # Pas de forecast : fallback sur logique simple à 2 zones
-            return self._decide_without_forecast(pod, carbon_class, current_ci)
+            return self._decide_without_forecast(pod, carbon_class, current_ci, dirty_threshold)
 
         return self._decide_with_forecast(
-            pod, carbon_class, current_ci, forecast, effective_deadline
+            pod, carbon_class, current_ci, forecast, effective_deadline, dirty_threshold
         )
 
     # ─── Logique avec forecast (le bijou) ────────────────────────
@@ -132,6 +136,7 @@ class TemporalScheduler:
         current_ci: float,
         forecast: list[dict],
         effective_deadline: datetime | None,
+        dirty_threshold: float | None = None,
     ) -> tuple[DelayDecision, str]:
         """
         Cherche le moment optimal pour exécuter le pod dans le forecast.
@@ -169,7 +174,8 @@ class TemporalScheduler:
 
         if carbon_class == CarbonClass.BATCH:
             # Batch : on attend seulement si on est en zone rouge
-            if current_ci > self.dirty_threshold:
+            effective_dirty = dirty_threshold if dirty_threshold is not None else self.dirty_threshold
+            if current_ci > effective_dirty:
                 return self._delay(
                     f"batch in red zone: waiting "
                     f"(now={current_ci:.0f}, optimal={min_ci:.0f} at {min_dt}, "
@@ -182,7 +188,11 @@ class TemporalScheduler:
     # ─── Logique sans forecast (fallback) ────────────────────────
 
     def _decide_without_forecast(
-        self, pod: dict, carbon_class: CarbonClass, current_ci: float
+        self,
+        pod: dict,
+        carbon_class: CarbonClass,
+        current_ci: float,
+        dirty_threshold: float | None = None,
     ) -> tuple[DelayDecision, str]:
         """
         Sans forecast, on fait une décision simple basée sur les seuils :
@@ -190,9 +200,10 @@ class TemporalScheduler:
         - Zone orange → retarde uniquement best-effort
         - Zone verte → schedule tout (déjà géré dans decide())
         """
-        if current_ci > self.dirty_threshold:
+        effective_dirty = dirty_threshold if dirty_threshold is not None else self.dirty_threshold
+        if current_ci > effective_dirty:
             return self._delay(
-                f"red zone (CI={current_ci:.0f} > {self.dirty_threshold}), no forecast available"
+                f"red zone (CI={current_ci:.0f} > {effective_dirty:.0f}), no forecast available"
             )
 
         # Zone orange (entre green et dirty)
