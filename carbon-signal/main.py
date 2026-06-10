@@ -103,7 +103,11 @@ def compute_thresholds(
     month = datetime.now(UTC).month
     entry = monthly_table.get(month)
     if entry and entry.get("green") and entry.get("dirty"):
-        return float(entry["green"]), float(entry["dirty"]), f"monthly_table_month_{month}"
+        return (
+            float(entry["green"]),
+            float(entry["dirty"]),
+            f"monthly_table_month_{month}",
+        )
 
     # No source available — caller should not overwrite the existing ConfigMap
     # with stale thresholds; return None to signal this condition
@@ -243,7 +247,9 @@ def build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds=None)
         # Both forecast and monthly table unavailable — leave thresholds out of
         # the signal so the extender keeps using the last valid values from the
         # previous ConfigMap write.
-        print("[THRESHOLDS] source=unavailable — thresholds omitted, extender uses previous values")
+        print(
+            "[THRESHOLDS] source=unavailable — thresholds omitted, extender uses previous values"
+        )
 
     return signal
 
@@ -306,7 +312,9 @@ def main():
     if monthly_thresholds:
         print(f"Loaded monthly thresholds from {THRESHOLDS_FILE}")
     else:
-        print(f"[INFO] No thresholds file at {THRESHOLDS_FILE}, will use forecast P25/P75 or env defaults")
+        print(
+            f"[INFO] No thresholds file at {THRESHOLDS_FILE}, will use forecast P25/P75 or env defaults"
+        )
 
     # Instantiate the source clients once (kept alive for the whole loop)
     emaps = ElectricityMaps()
@@ -317,7 +325,9 @@ def main():
 
     while running:
         try:
-            data = build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds)
+            data = build_signal(
+                emaps, vsphere, metrics, node_mapping, monthly_thresholds
+            )
             write_configmap(data)
             print(
                 f"[{data['timestamp']}] "

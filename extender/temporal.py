@@ -174,7 +174,9 @@ class TemporalScheduler:
 
         if carbon_class == CarbonClass.BATCH:
             # Batch : on attend seulement si on est en zone rouge
-            effective_dirty = dirty_threshold if dirty_threshold is not None else self.dirty_threshold
+            effective_dirty = (
+                dirty_threshold if dirty_threshold is not None else self.dirty_threshold
+            )
             if current_ci > effective_dirty:
                 return self._delay(
                     f"batch in red zone: waiting "
