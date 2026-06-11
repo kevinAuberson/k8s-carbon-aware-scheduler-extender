@@ -1,6 +1,8 @@
 """Carbon-aware scheduler extender — endpoints HTTP."""
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from prometheus_client import make_asgi_app
@@ -8,9 +10,13 @@ from prometheus_client import make_asgi_app
 from metrics import (
     CI_AT_DECISION,
     DELAY_GAIN,
+    DIRTY_THRESHOLD_METRIC,
+    GREEN_THRESHOLD_METRIC,
     GRID_INTENSITY,
     MARGINAL_COST,
+    NODE_CO2_G_PER_S,
     NODE_SCORE,
+    NODE_WATTS,
     SCHEDULING_DECISIONS,
     SIGNAL_AGE,
 )
@@ -22,13 +28,53 @@ from workload_classifier import classify
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extender")
 
-app = FastAPI()
-app.mount("/metrics", make_asgi_app())
-
-# Singletons
+# Singletons (created before lifespan so they're available in route handlers)
 signal_loader = SignalLoader()
 scorer = CarbonScorer(signal_loader)
 temporal = TemporalScheduler(signal_loader)
+
+
+async def _refresh_metrics_loop() -> None:
+    """Background task: push signal-level gauges every 30 s.
+
+    Decouples Grafana liveness from pod scheduling events so dashboards
+    stay fresh even when no workloads are being scheduled.
+    """
+    while True:
+        try:
+            signal = signal_loader.load()
+            if signal:
+                ci = signal["grid_intensity_g_per_kwh"]
+                GRID_INTENSITY.set(ci)
+                SIGNAL_AGE.set(signal_loader.age_seconds() or 0.0)
+
+                green = signal.get("green_threshold_g_per_kwh")
+                dirty = signal.get("dirty_threshold_g_per_kwh")
+                if green is not None:
+                    GREEN_THRESHOLD_METRIC.set(green)
+                if dirty is not None:
+                    DIRTY_THRESHOLD_METRIC.set(dirty)
+
+                for node in signal.get("nodes", []):
+                    name = node["name"]
+                    NODE_WATTS.labels(node=name).set(node.get("watts", 0.0))
+                    NODE_CO2_G_PER_S.labels(node=name).set(node.get("co2_g_per_s", 0.0))
+        except Exception as exc:
+            log.warning(f"Background metrics refresh failed: {exc}")
+        await asyncio.sleep(30)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_refresh_metrics_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+app.mount("/metrics", make_asgi_app())
 
 
 @app.post("/filter")
@@ -53,8 +99,6 @@ async def filter_nodes(request: Request):
 
     SCHEDULING_DECISIONS.labels(carbon_class=carbon_class, decision=decision.value).inc()
     CI_AT_DECISION.labels(carbon_class=carbon_class, decision=decision.value).observe(ci)
-    GRID_INTENSITY.set(ci)
-    SIGNAL_AGE.set(signal_loader.age_seconds() or 0.0)
 
     if decision == DelayDecision.DELAY:
         # Extraire le gain depuis le forecast si disponible

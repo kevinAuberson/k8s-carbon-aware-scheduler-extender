@@ -2,6 +2,40 @@
 
 from prometheus_client import Counter, Gauge, Histogram
 
+# ─── Signal continu (rafraîchi toutes les 30s en arrière-plan) ────────────────
+
+GRID_INTENSITY = Gauge(
+    "carbon_grid_intensity_current_g_per_kwh",
+    "Current grid carbon intensity from the carbon-signal ConfigMap",
+)
+
+SIGNAL_AGE = Gauge(
+    "carbon_signal_age_seconds",
+    "Age in seconds of the last loaded carbon signal",
+)
+
+GREEN_THRESHOLD_METRIC = Gauge(
+    "carbon_green_threshold_g_per_kwh",
+    "Current green threshold used by the extender (dynamic or static fallback)",
+)
+
+DIRTY_THRESHOLD_METRIC = Gauge(
+    "carbon_dirty_threshold_g_per_kwh",
+    "Current dirty threshold used by the extender (dynamic or static fallback)",
+)
+
+NODE_WATTS = Gauge(
+    "carbon_node_watts",
+    "Last known power consumption of a node (from vSphere via aggregator)",
+    ["node"],
+)
+
+NODE_CO2_G_PER_S = Gauge(
+    "carbon_node_co2_g_per_s",
+    "Last known CO2 emission rate of a node (watts × grid intensity / 3_600_000)",
+    ["node"],
+)
+
 # ─── Décisions de scheduling (/filter) ────────────────────────────────────────
 
 SCHEDULING_DECISIONS = Counter(
@@ -40,16 +74,4 @@ MARGINAL_COST = Histogram(
     "Marginal carbon cost of placing a pod on a node",
     ["node"],
     buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0],
-)
-
-# ─── État du signal ────────────────────────────────────────────────────────────
-
-GRID_INTENSITY = Gauge(
-    "carbon_grid_intensity_current_g_per_kwh",
-    "Current grid carbon intensity from the carbon-signal ConfigMap",
-)
-
-SIGNAL_AGE = Gauge(
-    "carbon_signal_age_seconds",
-    "Age in seconds of the last loaded carbon signal",
 )

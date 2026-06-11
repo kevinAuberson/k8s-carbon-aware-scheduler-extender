@@ -89,24 +89,32 @@ class CarbonScorer:
 
     def _normalize_to_scores(self, costs: dict[str, float], all_nodes: list[str]) -> dict[str, int]:
         """
-        Normalise les coûts marginaux en scores 0-100.
-        Le node avec le coût le plus bas a le score le plus haut.
-        """
-        c_min = min(costs.values())
-        c_max = max(costs.values())
+        Normalise les coûts marginaux en scores 0-100 via normalisation centrée
+        sur la moyenne.
 
-        # Cas où tous les nodes sont équivalents (cf. 4.2.3)
-        if abs(c_max - c_min) < 1e-9:
-            log.info("All nodes equivalent, returning neutral score")
+        Formule : score = clamp(50 + 50 × (c_mean - c_node) / c_mean, 0, 100)
+
+        Avantages vs min-max classique :
+        - Proportionnel à l'écart réel : +5 % de coût → ~2-3 pts de différence
+        - Évite le 0/100 systématique avec 2 nodes de coûts proches
+        - Conserve le sens : coût faible → score élevé
+        """
+        if not costs:
+            return {name: NEUTRAL_SCORE for name in all_nodes}
+
+        c_mean = sum(costs.values()) / len(costs)
+
+        # Cas dégénéré : tous les nodes sont identiques (ex. vSphere indisponible)
+        if c_mean < 1e-9:
+            log.info("All nodes have near-zero cost, returning neutral score")
             return {name: NEUTRAL_SCORE for name in all_nodes}
 
         scores = {}
         for name in all_nodes:
             if name not in costs:
-                # Node pas dans le signal → score neutre
                 scores[name] = NEUTRAL_SCORE
                 continue
-            normalized = 1 - (costs[name] - c_min) / (c_max - c_min)
-            scores[name] = int(round(MAX_SCORE * normalized))
+            raw = 50.0 + 50.0 * (c_mean - costs[name]) / c_mean
+            scores[name] = int(round(max(MIN_SCORE, min(MAX_SCORE, raw))))
 
         return scores
