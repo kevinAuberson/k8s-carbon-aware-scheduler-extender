@@ -26,16 +26,20 @@ def scorer(mock_signal):
 
 
 def test_lowest_cost_gets_highest_score(scorer):
-    """Le node le moins coûteux doit avoir le score le plus élevé."""
+    """Le node le moins coûteux doit avoir le score le plus élevé.
+
+    La normalisation est centrée sur la moyenne (pas min-max), donc les
+    extrêmes ne sont pas nécessairement 0 et 100. L'invariant qui compte
+    est l'ordre strict et la plage valide [0, 100].
+    """
     pod = {
         "metadata": {"name": "test", "ownerReferences": [{"kind": "Deployment"}]},
         "status": {"qosClass": "Burstable"},
     }
     scores = scorer.score_nodes(pod, ["node-low", "node-mid", "node-high"])
 
-    assert scores["node-low"] == 100
-    assert scores["node-high"] == 0
-    assert 0 < scores["node-mid"] < 100
+    assert scores["node-low"] > scores["node-mid"] > scores["node-high"]
+    assert all(0 <= s <= 100 for s in scores.values())
 
 
 def test_all_equal_returns_neutral_score():
