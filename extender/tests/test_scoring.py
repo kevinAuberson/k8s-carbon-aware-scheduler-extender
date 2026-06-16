@@ -1,3 +1,12 @@
+"""
+File:        test_scoring.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Unit tests for scoring.py — verifies that node carbon scores
+             are ordered correctly, within bounds, and that the mean-centred
+             normalisation produces proportional scores across node cost ranges.
+"""
+
 from unittest.mock import MagicMock
 
 import pytest

@@ -1,4 +1,12 @@
-"""Carbon-aware scheduler extender — endpoints HTTP."""
+"""
+File:        extender.py
+Author:      Kevin Auberson
+Created:     2026-05-02
+Description: HTTP entry point for the carbon-aware scheduler extender.
+             Exposes /filter (temporal shifting — delays pods to greener
+             windows) and /prioritize (node scoring by marginal carbon cost).
+             Also serves /metrics (Prometheus), /healthz and /debug/* endpoints.
+"""
 
 import asyncio
 import logging
@@ -16,6 +24,7 @@ from metrics import (
     MARGINAL_COST,
     NODE_CO2_G_PER_S,
     NODE_SCORE,
+    NODE_SELECTED,
     NODE_WATTS,
     SCHEDULING_DECISIONS,
     SIGNAL_AGE,
@@ -122,7 +131,6 @@ async def filter_nodes(request: Request):
 
 @app.post("/prioritize")
 async def prioritize(request: Request):
-    # ... ton code existant (inchangé)
     body = await request.json()
     pod = body.get("Pod", {})
     pod_name = pod.get("metadata", {}).get("name", "?")
@@ -148,6 +156,7 @@ async def prioritize(request: Request):
 
     if results:
         best = max(results, key=lambda x: x["Score"])
+        NODE_SELECTED.labels(node=best["Host"], carbon_class=carbon_class).inc()
         log.info(f"Pod {pod_name} → best: {best['Host']} (score={best['Score']})")
 
     return {"HostPriorityList": results}

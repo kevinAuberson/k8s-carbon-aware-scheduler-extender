@@ -1,4 +1,12 @@
-"""Définitions des métriques Prometheus exposées par l'extender."""
+"""
+File:        metrics.py
+Author:      Kevin Auberson
+Created:     2026-06-09
+Description: Prometheus metric definitions for the carbon-aware scheduler
+             extender. Covers scheduling decisions, CI at decision time,
+             delay gains, node scores, and continuous signal-level gauges
+             refreshed every 30 s by a background task in extender.py.
+"""
 
 from prometheus_client import Counter, Gauge, Histogram
 
@@ -62,6 +70,12 @@ DELAY_GAIN = Histogram(
 )
 
 # ─── Scoring des nœuds (/prioritize) ──────────────────────────────────────────
+
+NODE_SELECTED = Counter(
+    "carbon_node_selected_total",
+    "Number of times a node was chosen (highest score) during prioritization",
+    ["node", "carbon_class"],
+)
 
 NODE_SCORE = Gauge(
     "carbon_node_score",

@@ -1,4 +1,11 @@
-"""Charge et expose les données de carbon-signal."""
+"""
+File:        signal_loader.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Loads the carbon signal from the JSON file mounted from the
+             carbon-signal ConfigMap. Provides helpers to retrieve per-node
+             data and compute signal age (staleness detection).
+"""
 
 import json
 import logging

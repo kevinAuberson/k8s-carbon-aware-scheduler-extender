@@ -1,3 +1,11 @@
+"""
+File:        test_extender.py
+Author:      Kevin Auberson
+Created:     2026-05-02
+Description: Integration tests for the extender HTTP endpoints (/filter,
+             /prioritize, /healthz, /debug/*) using FastAPI TestClient.
+"""
+
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 

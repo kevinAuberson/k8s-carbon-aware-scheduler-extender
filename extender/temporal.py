@@ -1,9 +1,11 @@
 """
-Logique de retardement carbon-aware (carbon-aware shifting).
-
-Décide si un pod doit être schedulé maintenant ou retardé jusqu'à une
-fenêtre temporelle plus favorable (intensité carbone plus basse), en
-s'appuyant sur le forecast 24h de l'API ElectricityMaps.
+File:        temporal.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Carbon-aware temporal shifting engine. Decides whether a pod
+             should be scheduled immediately or delayed until a greener window
+             by analysing the 24 h CI forecast from ElectricityMaps.
+             Respects per-pod deadlines and a configurable max-delay horizon.
 """
 
 import logging

@@ -1,3 +1,12 @@
+"""
+File:        test_temporal.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Unit tests for temporal.py — verifies scheduling decisions
+             (delay vs schedule now) for all carbon classes, deadline handling,
+             max-delay expiry, and forecast-based optimal window selection.
+"""
+
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 

@@ -39,7 +39,7 @@ class Cache:
 
         Args:
             key: the cache key
-            value: the value to store (any type).
+            value: the value to store.
             ttl_seconds: How long the value stays valid, in seconds.
         """
         self._store[key] = (value, time.time() + ttl_seconds)

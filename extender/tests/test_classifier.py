@@ -1,3 +1,12 @@
+"""
+File:        test_classifier.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Unit tests for workload_classifier.py — verifies that pods are
+             correctly classified into LATENCY_SENSITIVE, BATCH or BEST_EFFORT
+             based on labels, owner references and QoS class.
+"""
+
 from workload_classifier import CarbonClass, classify
 
 # ─── Override par label explicite ─────────────────────────────

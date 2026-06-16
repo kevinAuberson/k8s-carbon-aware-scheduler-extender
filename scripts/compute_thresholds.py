@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """
+File:        compute_thresholds.py
+Author:      Kevin Auberson
+Created:     2026-06-10
+Description: Generates the carbon-signal-thresholds ConfigMap from an
+             ElectricityMaps hourly CSV export (lifecycle CI column).
+             Computes P25/P75 per month and outputs a ready-to-apply YAML.
+
 Generates a carbon-signal-thresholds ConfigMap from an ElectricityMaps
 hourly CSV export (lifecycle carbon intensity column).
 

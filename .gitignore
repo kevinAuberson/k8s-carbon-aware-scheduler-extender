@@ -21,3 +21,6 @@ secrets/
 *.rar
 dist/
 build/
+
+# Large dataset exports (regenerate with scripts/compute_thresholds.py)
+docs/*.csv

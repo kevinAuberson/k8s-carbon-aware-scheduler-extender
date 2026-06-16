@@ -2,7 +2,6 @@
 File:        tests/test_main.py
 Author:      Kevin Auberson
 Created:     2026-05-21
-Version:     0.1.0
 Description: Unit tests for the aggregator entry point. Covers the node
              mapping loader and the build_signal aggregation logic, with
              all data sources mocked.

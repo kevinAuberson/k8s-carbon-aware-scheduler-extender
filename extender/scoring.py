@@ -1,3 +1,13 @@
+"""
+File:        scoring.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Computes carbon-aware priority scores (0–100) for candidate nodes
+             using the formula C_marginal = (1 + α × CI_norm) × P_node × (1 + CPU_load).
+             Scores are normalised using a mean-centred method so that small cost
+             differences produce proportional scores rather than 0/100 extremes.
+"""
+
 import logging
 
 from workload_classifier import PENALTY_FACTORS, classify

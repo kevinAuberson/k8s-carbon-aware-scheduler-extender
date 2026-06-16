@@ -5,6 +5,10 @@ Created:     2026-05-10
 Description: Client for the Electricity Maps API. Fetches current grid
              carbon intensity (gCO2eq/kWh) and 24-hour forecast for the
              configured zone. Results are cached to respect the API quota.
+             Cache TTLs — tune to match your API plan quota:
+                - Academic / unlimited : current=300 s, forecast=3600 s  (defaults)
+                - Commercial (~1000/day): current=120 s, forecast=3600 s
+                - Free tier (~100/day)  : current=900 s, forecast=86400 s
 """
 
 import os
@@ -20,7 +24,8 @@ class ElectricityMaps:
         self.token = os.environ["EMAPS_TOKEN"]
         self.zone = os.environ.get("EMAPS_ZONE", "CH")
         self.base_url = "https://api.electricitymap.org/v3"
-        self.ttl = 300  # 5 min — limited API quota, slow-changing data
+        self.ttl = int(os.environ.get("EMAPS_CURRENT_TTL", "300"))
+        self.forecast_ttl = int(os.environ.get("EMAPS_FORECAST_TTL", "3600"))
 
     def _headers(self):
         """Build the auth headers required by the API."""
@@ -79,7 +84,7 @@ class ElectricityMaps:
         response.raise_for_status()
 
         forecast = response.json().get("forecast", [])
-        cache.set("emaps_forecast", forecast, 3600)  # 1h
+        cache.set("emaps_forecast", forecast, self.forecast_ttl)
         return forecast
 
 

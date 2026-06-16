@@ -3,8 +3,8 @@ File:        vsphere.py
 Author:      Kevin Auberson
 Created:     2026-05-10
 Description: Client for vCenter that retrieves the real measured power of
-             ESXi hosts (used as ground truth) and estimates the power
-             consumption of running VMs based on the CPU MHz ratio.
+             ESXi hosts and estimates the power consumption of running 
+             VMs based on the CPU MHz ratio.
 """
 
 import atexit
@@ -41,7 +41,7 @@ class VSphere:
         if self._si is not None:
             return
 
-        # vCenter uses a self-signed certificate (internal HEIG-VD network).
+        # vCenter uses a self-signed certificate.
         # Validation is intentionally disabled here; mitigated by the network
         # being isolated and access restricted by firewall.
         ctx = ssl._create_unverified_context()  # nosec B323

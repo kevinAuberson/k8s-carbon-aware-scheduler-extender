@@ -37,6 +37,16 @@ spec:
               value: "true"
             - name: VCENTER_VERIFY_SSL
               value: "false"
+            # ElectricityMaps API polling — tune to your plan quota:
+            #   Academic (default): POLL_INTERVAL=30, EMAPS_CURRENT_TTL=300, EMAPS_FORECAST_TTL=3600
+            #   Commercial:         POLL_INTERVAL=120, EMAPS_CURRENT_TTL=120, EMAPS_FORECAST_TTL=3600
+            #   Free (~100 req/day):POLL_INTERVAL=900, EMAPS_CURRENT_TTL=900, EMAPS_FORECAST_TTL=86400
+            - name: POLL_INTERVAL
+              value: "30"
+            - name: EMAPS_CURRENT_TTL
+              value: "300"
+            - name: EMAPS_FORECAST_TTL
+              value: "3600"
 
           # Sensitive config from the Secret (created via kubectl)
           envFrom:

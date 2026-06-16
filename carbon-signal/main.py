@@ -10,7 +10,6 @@ Description: Entry point of the Carbon Signal Aggregator. Polls all data
              Data architecture:
              - Watts per K8s node    -> vSphere (real ESXi measurement)
              - CPU/RAM per K8s node  -> metrics-server
-             - Watts per pod         -> Kepler (complementary, observability)
              - Grid carbon intensity -> Electricity Maps
 """
 
@@ -31,21 +30,21 @@ from vsphere import VSphere
 load_dotenv()
 
 # Polling and ConfigMap settings
-POLL_INTERVAL = 30
+# Tune POLL_INTERVAL to match your ElectricityMaps plan quota:
+#   Academic / unlimited : 30 s  (default)
+#   Commercial (~1000/day): 120 s
+#   Free tier (~100/day)  : 900 s
+POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "30"))
 NAMESPACE = "carbon-scheduler"
 CONFIGMAP_NAME = "carbon-signal"
 NODE_MAPPING_FILE = "node_mapping.yaml"
 THRESHOLDS_FILE = os.getenv("THRESHOLDS_FILE", "/app/thresholds.yaml")
 
-# Cap: prevents the dynamic green threshold from being unreasonably high
-# in carbon-intensive grids (e.g. DE in winter where P25 could be ~150)
-MAX_GREEN = float(os.getenv("MAX_GREEN_THRESHOLD_G_PER_KWH", "100"))
-
 # Global flag used by the shutdown handler
 running = True
 
 
-def handle_shutdown(signum, frame):
+def handle_shutdown(signum):
     """
     Signal handler for graceful shutdown.
 
@@ -76,30 +75,15 @@ def load_monthly_thresholds(path: str) -> dict:
         return {}
 
 
-def compute_thresholds(
-    forecast_24h: list[dict],
-    monthly_table: dict,
-) -> tuple[float, float, str]:
+def compute_thresholds(monthly_table: dict) -> tuple[float, float, str]:
     """
-    Compute green/dirty thresholds with priority:
-      1. P25/P75 of the current 24h forecast  (dynamic, zone-agnostic)
-      2. Monthly P25/P75 from historical table (static fallback)
+    Compute green/dirty thresholds from the monthly historical table.
 
-    If neither source is available the last signal already in the ConfigMap
-    still holds valid thresholds — the extender reads those directly.
+    If the table is unavailable the last signal in the ConfigMap still holds
+    valid thresholds — the extender reads those directly.
 
     Returns (green, dirty, source) where source describes which tier was used.
     """
-    # Priority 1: dynamic from forecast
-    if forecast_24h:
-        ci_values = sorted(p["carbon_intensity"] for p in forecast_24h)
-        n = len(ci_values)
-        green = ci_values[int(n * 0.25)]
-        dirty = ci_values[int(n * 0.75)]
-        green = min(green, MAX_GREEN)
-        return round(green, 1), round(dirty, 1), "forecast_p25_p75"
-
-    # Priority 2: monthly historical table
     month = datetime.now(UTC).month
     entry = monthly_table.get(month)
     if entry and entry.get("green") and entry.get("dirty"):
@@ -226,9 +210,7 @@ def build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds=None)
         print(f"[WARN] Forecast unavailable: {e}")
         forecast_24h = []
 
-    green, dirty, threshold_source = compute_thresholds(
-        forecast_24h, monthly_thresholds or {}
-    )
+    green, dirty, threshold_source = compute_thresholds(monthly_thresholds or {})
 
     signal: dict = {
         "timestamp": datetime.now(UTC).isoformat(),

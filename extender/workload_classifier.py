@@ -1,4 +1,12 @@
-"""Classifie un pod selon son owner, sa QoS et son éventuel label explicite."""
+"""
+File:        workload_classifier.py
+Author:      Kevin Auberson
+Created:     2026-06-03
+Description: Classifies a pod into one of three carbon classes
+             (LATENCY_SENSITIVE, BATCH, BEST_EFFORT) based on priority:
+             explicit label > DaemonSet > BestEffort QoS > ReplicaSet/
+             StatefulSet > Job > orphan pod heuristic.
+"""
 
 import logging
 from enum import StrEnum
