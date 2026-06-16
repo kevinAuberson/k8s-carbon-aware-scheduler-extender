@@ -24,7 +24,7 @@ spec:
         - name: ghcr-auth
       containers:
         - name: aggregator
-          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/aggregator:sha-8686eb14abba65e1cdd40df9ce277a2d077c2fbb
+          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/aggregator:sha-efbd29a579c67d89e4fea9eeefc7dec535fa53ee
           imagePullPolicy: IfNotPresent
 
           # Non-sensitive config
