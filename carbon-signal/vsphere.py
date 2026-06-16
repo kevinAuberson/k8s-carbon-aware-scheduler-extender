@@ -3,7 +3,7 @@ File:        vsphere.py
 Author:      Kevin Auberson
 Created:     2026-05-10
 Description: Client for vCenter that retrieves the real measured power of
-             ESXi hosts and estimates the power consumption of running 
+             ESXi hosts and estimates the power consumption of running
              VMs based on the CPU MHz ratio.
 """
 
