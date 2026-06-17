@@ -397,18 +397,22 @@
 
     {
       "id": 9,
-      "title": "CI at Scheduling Decision (p50 by class)",
-      "description": "Median grid CI at the moment each class of pod was scheduled. Key benchmark metric: carbon-aware should show lower CI for flexible classes vs the default scheduler.",
+      "title": "CI au scheduling — Baseline vs Carbon-Aware (p50)",
+      "description": "Comparaison directe : latency_sensitive = jamais retardé (simule le scheduler par défaut), batch = temporal shifting actif. L'écart entre les deux courbes = gain CO₂ du carbon-aware scheduling.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 44 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{decision=\"schedule_now\"}[10m])) by (le, carbon_class))",
-          "legendFormat": "scheduled — {{carbon_class}}"
+          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{carbon_class=\"latency_sensitive\"}[10m])) by (le))",
+          "legendFormat": "Baseline (latency_sensitive — jamais retardé)"
         },
         {
-          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{decision=\"delay\"}[10m])) by (le, carbon_class))",
-          "legendFormat": "delayed — {{carbon_class}}"
+          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{carbon_class=\"batch\", decision=\"schedule_now\"}[10m])) by (le))",
+          "legendFormat": "Carbon-aware (batch — après shifting)"
+        },
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{carbon_class=\"batch\", decision=\"delay\"}[10m])) by (le))",
+          "legendFormat": "Batch — CI au moment du délai"
         }
       ],
       "options": { "tooltip": { "mode": "multi" } },

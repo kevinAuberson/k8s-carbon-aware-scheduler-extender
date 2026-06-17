@@ -51,6 +51,7 @@ def client(mock_loader):
         patch("extender.signal_loader", mock_loader),
         patch("extender.scorer.signal_loader", mock_loader),
         patch("extender.temporal.signal_loader", mock_loader),
+        patch("gate_controller.gate_controller_loop", return_value=None),
     ):
         import importlib
 
@@ -100,10 +101,11 @@ def test_filter_passes_all_nodes_when_schedule_now(client):
     assert result["FailedNodes"] == {}
 
 
-def test_filter_delays_besteffort_on_red_grid(client):
-    """Grille rouge + best-effort → DELAY → tous les nodes dans FailedNodes."""
+def test_filter_passes_all_nodes_even_on_red_grid(client):
+    """Grille rouge + best-effort → /filter est un pass-through (temporal shifting
+    est géré par le gate controller via schedulingGates, pas par /filter)."""
     c, loader = client
-    loader.load.return_value = make_signal(ci=85)  # > DIRTY_THRESHOLD=70
+    loader.load.return_value = make_signal(ci=85)
     be_pod = {
         "metadata": {
             "name": "be-pod",
@@ -117,9 +119,8 @@ def test_filter_delays_besteffort_on_red_grid(client):
     resp = c.post("/filter", json=payload)
     assert resp.status_code == 200
     result = resp.json()
-    assert result["Nodes"]["items"] == []
-    assert "node-a" in result["FailedNodes"]
-    assert "carbon-aware delay" in result["FailedNodes"]["node-a"]
+    assert len(result["Nodes"]["items"]) == 2
+    assert result["FailedNodes"] == {}
 
 
 def test_filter_never_delays_latency_sensitive(client):

@@ -151,13 +151,24 @@ def test_batch_flexible_not_delayed_in_orange(scheduler):
     assert decision == DelayDecision.SCHEDULE_NOW
 
 
-def test_batch_not_flexible_never_delayed(scheduler):
-    """Batch sans annotation flexible : jamais retardé."""
+def test_batch_flexible_by_default(scheduler):
+    """Batch sans annotation est flexible par défaut et peut être retardé."""
     sched, loader = scheduler
     forecast = make_forecast(120, [80, 60, 40, 50, 60])
     loader.load.return_value = make_signal(ci=120, forecast=forecast)
 
     decision, _ = sched.decide(make_pod_batch())
+    assert decision == DelayDecision.DELAY
+
+
+def test_batch_opt_out_never_delayed(scheduler):
+    """Batch avec flexible=false n'est jamais retardé."""
+    sched, loader = scheduler
+    forecast = make_forecast(120, [80, 60, 40, 50, 60])
+    loader.load.return_value = make_signal(ci=120, forecast=forecast)
+
+    pod = make_pod_batch(annotations={"carbon-aware/flexible": "false"})
+    decision, _ = sched.decide(pod)
     assert decision == DelayDecision.SCHEDULE_NOW
 
 

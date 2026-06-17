@@ -15,6 +15,7 @@ spec:
       labels:
         app: carbon-extender
     spec:
+      serviceAccountName: carbon-extender
       imagePullSecrets:
         - name: ghcr-auth
       containers:
@@ -25,8 +26,17 @@ spec:
             - containerPort: 8080
               name: http
           env:
-            - name: SIGNAL_FILE
-              value: /etc/carbon-signal/signal.json
+            # Temporal shifting — délai maximum pour les pods BATCH et BEST_EFFORT
+            # Peut être surchargé par pod via l'annotation carbon-aware/max-delay-hours
+            # Exemples : 24 (1 jour), 48 (2 jours), 168 (1 semaine)
+            - name: DEFAULT_MAX_DELAY_HOURS
+              value: "24"
+            # Gain minimum (gCO2/kWh) pour qu'un délai soit justifié
+            # Réduire à 5 pour des grids peu variables (ex: Suisse en été)
+            - name: MIN_GAIN_TO_DELAY_G_PER_KWH
+              value: "10"
+            - name: IN_CLUSTER
+              value: "true"
           volumeMounts:
             - name: carbon-signal
               mountPath: /etc/carbon-signal

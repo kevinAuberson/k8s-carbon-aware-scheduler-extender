@@ -26,7 +26,8 @@ spec:
               cpu: "100m"
               memory: "64Mi"
 ---
-# Job sans label : owner=Job → batch, non flexible → schedule immédiatement
+# Job batch (flexible par défaut) : schedulingGate retient le pod tant que la CI
+# n'est pas favorable. Le gate controller retire la gate automatiquement.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -36,6 +37,8 @@ spec:
   template:
     spec:
       schedulerName: carbon-aware
+      schedulingGates:
+        - name: carbon-aware-gate
       containers:
         - name: app
           image: busybox
@@ -46,18 +49,22 @@ spec:
               memory: "64Mi"
       restartPolicy: Never
 ---
-# Job flexible : owner=Job + annotation flexible=true → batch flexible → retardé si CI > DIRTY (70)
+# Job batch opt-out : annotation flexible=false → le gate controller ne retarde
+# jamais ce pod (la gate est retirée immédiatement)
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: demo-auto-job-flexible
+  name: demo-auto-job-no-delay
   namespace: default
-  annotations:
-    carbon-aware/flexible: "true"
 spec:
   template:
+    metadata:
+      annotations:
+        carbon-aware/flexible: "false"
     spec:
       schedulerName: carbon-aware
+      schedulingGates:
+        - name: carbon-aware-gate
       containers:
         - name: app
           image: busybox
@@ -68,7 +75,8 @@ spec:
               memory: "64Mi"
       restartPolicy: Never
 ---
-# Pod orphelin sans resources : pas d'owner, QoS=BestEffort → best-effort → flexible par défaut → retardé si CI > GREEN (40)
+# Pod orphelin sans resources : BestEffort → flexible par défaut → gate retient
+# le pod tant que la CI n'est pas favorable
 apiVersion: v1
 kind: Pod
 metadata:
@@ -76,6 +84,8 @@ metadata:
   namespace: default
 spec:
   schedulerName: carbon-aware
+  schedulingGates:
+    - name: carbon-aware-gate
   containers:
     - name: app
       image: busybox

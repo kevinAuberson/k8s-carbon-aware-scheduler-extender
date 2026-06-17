@@ -3,12 +3,16 @@ File:        scoring.py
 Author:      Kevin Auberson
 Created:     2026-06-03
 Description: Computes carbon-aware priority scores (0–100) for candidate nodes
-             using the formula C_marginal = (1 + α × CI_norm) × P_node × (1 + CPU_load).
+             using the formula:
+               C_marginal = (1 + α × CI_norm) × P_node × (1 + w_cpu × CPU_load + w_mem × MEM_load)
+             CPU and memory loads are weighted (default 70/30) to account for
+             memory-intensive workloads that would otherwise be invisible.
              Scores are normalised using a mean-centred method so that small cost
              differences produce proportional scores rather than 0/100 extremes.
 """
 
 import logging
+import os
 
 from workload_classifier import PENALTY_FACTORS, classify
 
@@ -16,9 +20,14 @@ log = logging.getLogger("scoring")
 
 # Score neutre quand tous les nodes sont équivalents
 NEUTRAL_SCORE = 50
-# Score max et min
 MAX_SCORE = 100
 MIN_SCORE = 0
+
+# Pondération CPU/mémoire dans le coût marginal.
+# Le CPU domine la consommation dynamique, mais la RAM a un coût non
+# négligeable (lecture/écriture, refresh DRAM).
+W_CPU = float(os.getenv("SCORING_W_CPU", "0.7"))
+W_MEM = float(os.getenv("SCORING_W_MEM", "0.3"))
 
 
 class CarbonScorer:
@@ -63,8 +72,7 @@ class CarbonScorer:
         self, node_name: str, signal: dict, alpha: float, ci_norm: float
     ) -> float | None:
         """
-        Calcule C_marginal pour un node :
-        C_marginal = (1 + α × CI_norm) × P_node × (1 + CPU_load)
+        C_marginal = (1 + α × CI_norm) × P_node × (1 + w_cpu × CPU_load + w_mem × MEM_load)
         """
         node = next((n for n in signal["nodes"] if n["name"] == node_name), None)
         if not node:
@@ -73,22 +81,28 @@ class CarbonScorer:
 
         p_node = node["watts"]
         cpu_load = self._estimate_cpu_load(node)
+        mem_load = self._estimate_mem_load(node)
+        combined_load = W_CPU * cpu_load + W_MEM * mem_load
 
-        cost = (1 + alpha * ci_norm) * p_node * (1 + cpu_load)
+        cost = (1 + alpha * ci_norm) * p_node * (1 + combined_load)
 
         log.debug(
-            f"{node_name}: P={p_node:.2f}W, CPU_load={cpu_load:.2f}, "
-            f"α={alpha}, CI_norm={ci_norm:.2f} → C={cost:.4f}"
+            f"{node_name}: P={p_node:.2f}W, CPU={cpu_load:.2f}, MEM={mem_load:.2f}, "
+            f"combined={combined_load:.2f}, α={alpha}, CI_norm={ci_norm:.2f} → C={cost:.4f}"
         )
         return cost
 
     def _estimate_cpu_load(self, node: dict) -> float:
-
         capacity = node.get("cpu_capacity_millicores")
         if capacity and capacity > 0:
             return min(node["cpu_millicores"] / capacity, 1.0)
-        # fallback si la capacité n'est pas dans le signal
         return min(node["cpu_millicores"] / 4000, 1.0)
+
+    def _estimate_mem_load(self, node: dict) -> float:
+        capacity = node.get("memory_capacity_mib")
+        if capacity and capacity > 0:
+            return min(node.get("memory_mib", 0) / capacity, 1.0)
+        return min(node.get("memory_mib", 0) / 8192, 1.0)
 
     def _normalize_ci(self, ci: int) -> float:
         """

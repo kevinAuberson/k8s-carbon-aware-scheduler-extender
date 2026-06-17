@@ -44,7 +44,7 @@ THRESHOLDS_FILE = os.getenv("THRESHOLDS_FILE", "/app/thresholds.yaml")
 running = True
 
 
-def handle_shutdown(signum):
+def handle_shutdown(signum, frame=None):
     """
     Signal handler for graceful shutdown.
 
@@ -75,15 +75,32 @@ def load_monthly_thresholds(path: str) -> dict:
         return {}
 
 
-def compute_thresholds(monthly_table: dict) -> tuple[float, float, str]:
+def compute_thresholds(
+    monthly_table: dict, forecast_24h: list
+) -> tuple[float, float, str]:
     """
-    Compute green/dirty thresholds from the monthly historical table.
+    Compute green/dirty thresholds.
 
-    If the table is unavailable the last signal in the ConfigMap still holds
-    valid thresholds — the extender reads those directly.
+    Priority:
+    1. Forecast P15/P85 — always attainable within the next 24h; adapts to
+       the current day rather than historical averages.  Requires at least 8
+       forecast points and a meaningful spread (≥ 5 gCO₂/kWh).
+    2. Monthly historical table — stable fallback when forecast is absent or
+       the grid is so clean that the spread collapses (e.g. Swiss summer).
 
     Returns (green, dirty, source) where source describes which tier was used.
     """
+    # 1. Forecast-based thresholds (preferred)
+    if forecast_24h:
+        intensities = sorted(p["carbon_intensity"] for p in forecast_24h)
+        n = len(intensities)
+        if n >= 8:
+            p15 = intensities[min(int(n * 0.15), n - 1)]
+            p85 = intensities[min(int(n * 0.85), n - 1)]
+            if p85 - p15 >= 5:
+                return p15, p85, "forecast_p15_p85"
+
+    # 2. Monthly historical table
     month = datetime.now(UTC).month
     entry = monthly_table.get(month)
     if entry and entry.get("green") and entry.get("dirty"):
@@ -96,6 +113,37 @@ def compute_thresholds(monthly_table: dict) -> tuple[float, float, str]:
     # No source available — caller should not overwrite the existing ConfigMap
     # with stale thresholds; return None to signal this condition
     return None, None, "unavailable"
+
+
+def _parse_k8s_memory(mem_str: str) -> int:
+    """Convert a Kubernetes memory string (Ki/Mi/Gi) to MiB."""
+    import re
+
+    units = {"Ki": 1 / 1024, "Mi": 1, "Gi": 1024, "Ti": 1024 * 1024}
+    match = re.match(r"^(\d+)([A-Za-z]*)$", mem_str)
+    if not match:
+        return 0
+    value, unit = int(match.group(1)), match.group(2)
+    return int(value * units.get(unit, 1 / (1024 * 1024)))
+
+
+def get_node_capacities() -> dict[str, dict]:
+    """Fetch allocatable CPU (millicores) and memory (MiB) per node."""
+    api = client.CoreV1Api()
+    result = {}
+    for node in api.list_node().items:
+        name = node.metadata.name
+        cpu_str = node.status.allocatable.get("cpu", "0")
+        mem_str = node.status.allocatable.get("memory", "0")
+        if cpu_str.endswith("m"):
+            cpu_m = int(cpu_str[:-1])
+        else:
+            cpu_m = int(float(cpu_str) * 1000)
+        result[name] = {
+            "cpu_millicores": cpu_m,
+            "memory_mib": _parse_k8s_memory(mem_str),
+        }
+    return result
 
 
 def load_node_mapping(path):
@@ -165,12 +213,18 @@ def build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds=None)
         print(f"[WARN] metrics-server unavailable: {e}")
         node_usage = {}
 
-    # 4. Combine all sources per node
+    # 4. Allocatable CPU capacity per node (for accurate CPU-load estimation)
+    try:
+        node_capacities = get_node_capacities()
+    except Exception as e:
+        print(f"[WARN] Node capacities unavailable: {e}")
+        node_capacities = {}
+
+    # 5. Combine all sources per node
     # Iterate over K8s nodes (the authoritative list) and resolve their
     # vSphere counterpart via the mapping file
     nodes = []
     for k8s_name, usage in node_usage.items():
-        # Resolve the corresponding vSphere VM name (if mapped)
         vsphere_name = node_mapping.get(k8s_name)
         if vsphere_name is None:
             print(f"[WARN] No vSphere mapping for K8s node '{k8s_name}'")
@@ -187,14 +241,16 @@ def build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds=None)
         #   Watts * (gCO2/kWh) / (3600 s/h * 1000 W/kW) = gCO2/s
         co2_per_second = watts * grid_intensity / (3600 * 1000)
 
+        node_cap = node_capacities.get(k8s_name, {})
         nodes.append(
             {
                 "name": k8s_name,
-                "vsphere_name": vsphere_name,
                 "watts": watts,
                 "co2_g_per_s": co2_per_second,
                 "cpu_millicores": usage["cpu_millicores"],
+                "cpu_capacity_millicores": node_cap.get("cpu_millicores", 0),
                 "memory_mib": usage["memory_mib"],
+                "memory_capacity_mib": node_cap.get("memory_mib", 0),
             }
         )
     try:
@@ -210,7 +266,9 @@ def build_signal(emaps, vsphere, metrics, node_mapping, monthly_thresholds=None)
         print(f"[WARN] Forecast unavailable: {e}")
         forecast_24h = []
 
-    green, dirty, threshold_source = compute_thresholds(monthly_thresholds or {})
+    green, dirty, threshold_source = compute_thresholds(
+        monthly_thresholds or {}, forecast_24h
+    )
 
     signal: dict = {
         "timestamp": datetime.now(UTC).isoformat(),

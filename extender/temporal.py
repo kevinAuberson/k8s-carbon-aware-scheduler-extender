@@ -20,11 +20,10 @@ log = logging.getLogger("temporal")
 
 # ─── Configuration ─────────────────────────────────────────────────
 
-# Seuils calibrés sur Suisse 2025 lifecycle (ElectricityMaps)
-# Source : analyse statistique des données 2025
-#   Médiane annuelle : 41.9 gCO₂eq/kWh
-#   P75              : 58.3 gCO₂eq/kWh
-#   P90              : 73.6 gCO₂eq/kWh
+# Seuils de dernier recours — utilisés uniquement en développement local
+# (sans aggregator). En production, les seuils dynamiques viennent du
+# ConfigMap carbon-signal (P15/P85 du forecast ou table mensuelle historique)
+# et prennent toujours le dessus sur ces valeurs.
 GREEN_THRESHOLD = int(os.getenv("GREEN_THRESHOLD_G_PER_KWH", "40"))
 DIRTY_THRESHOLD = int(os.getenv("DIRTY_THRESHOLD_G_PER_KWH", "70"))
 
@@ -88,11 +87,11 @@ class TemporalScheduler:
         """Décide pour un pod donné : schedule maintenant ou retarder."""
         carbon_class = classify(pod)
 
-        # 1. Latency-sensitive : jamais retardé
-        if carbon_class == CarbonClass.LATENCY_SENSITIVE:
-            return self._now("latency-sensitive: never delayed")
-
-        # 2. Pas flexible : jamais retardé (consentement explicite requis)
+        # Pas flexible → jamais retardé.
+        # _is_flexible gère toutes les classes :
+        #   - LATENCY_SENSITIVE sans annotation → pas flexible (schedule immédiat)
+        #   - LATENCY_SENSITIVE avec deadline ou flexible=true → flexible (opt-in explicite)
+        #   - BATCH / BEST_EFFORT → flexible par défaut (opt-out via flexible=false)
         if not self._is_flexible(pod, carbon_class):
             return self._now(f"{carbon_class.value}: not flexible")
 
@@ -220,20 +219,27 @@ class TemporalScheduler:
 
     def _is_flexible(self, pod: dict, carbon_class: CarbonClass) -> bool:
         """
-        Un pod est flexible si :
-        - annotation explicite carbon-aware/flexible=true
-        - OU annotation deadline présente (consentement implicite)
-        - OU classe best-effort (flexible par défaut)
+        Un pod est flexible (peut être retardé) selon ces règles, par ordre de priorité :
+        - carbon-aware/flexible=false → jamais retardé (opt-out explicite)
+        - carbon-aware/flexible=true  → toujours retardé si possible (opt-in explicite)
+        - carbon-aware/deadline présente → flexible (consentement implicite)
+        - BEST_EFFORT ou BATCH → flexible par défaut
+
+        La durée maximale du délai est limitée par :
+        - l'annotation carbon-aware/max-delay-hours sur le pod (ex: "48" pour 2 jours,
+          "168" pour 1 semaine)
+        - sinon DEFAULT_MAX_DELAY_HOURS (env var sur l'extender, défaut 24h)
         """
         annotations = pod.get("metadata", {}).get("annotations", {})
+        explicit = annotations.get(ANN_FLEXIBLE, "").lower()
 
-        if annotations.get(ANN_FLEXIBLE, "").lower() == "true":
+        if explicit == "false":
+            return False
+        if explicit == "true":
             return True
         if ANN_DEADLINE in annotations:
             return True
-        if carbon_class == CarbonClass.BEST_EFFORT:
-            return True
-        return False
+        return carbon_class in (CarbonClass.BEST_EFFORT, CarbonClass.BATCH)
 
     # ─── Helpers : deadlines & temps ─────────────────────────────
 

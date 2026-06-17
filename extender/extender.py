@@ -10,14 +10,15 @@ Description: HTTP entry point for the carbon-aware scheduler extender.
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from prometheus_client import make_asgi_app
 
+from gate_controller import gate_controller_loop
 from metrics import (
     CI_AT_DECISION,
-    DELAY_GAIN,
     DIRTY_THRESHOLD_METRIC,
     GREEN_THRESHOLD_METRIC,
     GRID_INTENSITY,
@@ -31,7 +32,7 @@ from metrics import (
 )
 from scoring import NEUTRAL_SCORE, CarbonScorer
 from signal_loader import SignalLoader
-from temporal import DelayDecision, TemporalScheduler
+from temporal import TemporalScheduler
 from workload_classifier import classify
 
 logging.basicConfig(level=logging.INFO)
@@ -75,11 +76,28 @@ async def _refresh_metrics_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_refresh_metrics_loop())
+    # Init kubernetes client for the gate controller
+    try:
+        if os.environ.get("IN_CLUSTER", "false").lower() == "true":
+            from kubernetes import config
+
+            config.load_incluster_config()
+            log.info("Loaded in-cluster Kubernetes config for gate controller")
+        else:
+            from kubernetes import config
+
+            config.load_kube_config()
+            log.info("Loaded local kubeconfig for gate controller")
+    except Exception as exc:
+        log.warning(f"Kubernetes config not available, gate controller disabled: {exc}")
+
+    metrics_task = asyncio.create_task(_refresh_metrics_loop())
+    gate_task = asyncio.create_task(gate_controller_loop(signal_loader, temporal))
     try:
         yield
     finally:
-        task.cancel()
+        metrics_task.cancel()
+        gate_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -89,39 +107,25 @@ app.mount("/metrics", make_asgi_app())
 @app.post("/filter")
 async def filter_nodes(request: Request):
     """
-    Filtre les nodes éligibles. Peut aussi retarder le scheduling
-    d'un pod en retournant tous les nodes dans FailedNodes.
+    Pass-through filter — temporal shifting is handled by the gate controller
+    (schedulingGates) BEFORE the pod reaches the scheduler. By the time a pod
+    arrives here, the gate has already been removed and the pod is ready to be
+    scheduled. This endpoint records scheduling metrics and passes all nodes.
     """
     body = await request.json()
     pod = body.get("Pod", {})
     pod_name = pod.get("metadata", {}).get("name", "?")
     nodes = body.get("Nodes", {}).get("items", [])
-    node_names_str = [n["metadata"]["name"] for n in nodes]
-
-    # Décision temporelle : on schedule maintenant ou on attend ?
-    decision, reason = temporal.decide(pod)
-    log.info(f"Pod {pod_name}: {decision.value} ({reason})")
 
     carbon_class = classify(pod).value
     signal = signal_loader.load()
     ci = signal["grid_intensity_g_per_kwh"] if signal else 0.0
 
-    SCHEDULING_DECISIONS.labels(carbon_class=carbon_class, decision=decision.value).inc()
-    CI_AT_DECISION.labels(carbon_class=carbon_class, decision=decision.value).observe(ci)
+    SCHEDULING_DECISIONS.labels(carbon_class=carbon_class, decision="schedule_now").inc()
+    CI_AT_DECISION.labels(carbon_class=carbon_class, decision="schedule_now").observe(ci)
 
-    if decision == DelayDecision.DELAY:
-        # Extraire le gain depuis le forecast si disponible
-        optimal = temporal.find_optimal_window()
-        if optimal and optimal["potential_gain"] > 0:
-            DELAY_GAIN.labels(carbon_class=carbon_class).observe(optimal["potential_gain"])
+    log.info(f"Pod {pod_name}: schedule_now (class={carbon_class}, CI={ci:.0f})")
 
-        return {
-            "Nodes": {"items": []},
-            "FailedNodes": {name: f"carbon-aware delay: {reason}" for name in node_names_str},
-            "Error": "",
-        }
-
-    # SCHEDULE_NOW : on laisse passer tous les nodes, le scoring fera le reste
     return {
         "Nodes": {"items": nodes},
         "FailedNodes": {},

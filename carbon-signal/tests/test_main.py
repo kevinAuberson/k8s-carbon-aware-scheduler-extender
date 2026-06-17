@@ -8,7 +8,7 @@ Description: Unit tests for the aggregator entry point. Covers the node
 """
 
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("EMAPS_TOKEN", "test-token")
 os.environ.setdefault("VCENTER_HOST", "fake-vcenter")
@@ -76,8 +76,12 @@ def _make_mocks(grid_intensity=92, vm_watts=50.0, cpu=500, mem=1024):
     return emaps, vsphere, metrics
 
 
-def test_build_signal_combines_sources():
-    """build_signal merges grid intensity, vSphere watts and metrics CPU/RAM."""
+_NODE_CAPACITIES = {"k8s-node-1": {"cpu_millicores": 4000, "memory_mib": 8192}}
+
+
+@patch("main.get_node_capacities", return_value=_NODE_CAPACITIES)
+def test_build_signal_combines_sources(_mock_cap):
+    """build_signal merges grid intensity, vSphere watts and metrics CPU."""
     emaps, vsphere, metrics = _make_mocks(grid_intensity=92, vm_watts=50.0)
     mapping = {"k8s-node-1": "vsphere-vm-1"}
 
@@ -89,21 +93,17 @@ def test_build_signal_combines_sources():
 
     node = signal["nodes"][0]
     assert node["name"] == "k8s-node-1"
-    assert node["vsphere_name"] == "vsphere-vm-1"
     assert node["watts"] == 50.0
     assert node["cpu_millicores"] == 500
+    assert node["cpu_capacity_millicores"] == 4000
     assert node["memory_mib"] == 1024
+    assert node["memory_capacity_mib"] == 8192
+    assert "vsphere_name" not in node
 
 
-def test_build_signal_co2_calculation():
-    """
-    CO2 rate = watts * grid_intensity / (3600 * 1000).
-
-    Example: 50 W at 92 gCO2/kWh
-           = 50 * 92 / 3'600'000
-           = 4600 / 3'600'000
-           = 0.001277... gCO2/s
-    """
+@patch("main.get_node_capacities", return_value=_NODE_CAPACITIES)
+def test_build_signal_co2_calculation(_mock_cap):
+    """CO2 rate = watts * grid_intensity / (3600 * 1000)."""
     emaps, vsphere, metrics = _make_mocks(grid_intensity=92, vm_watts=50.0)
     mapping = {"k8s-node-1": "vsphere-vm-1"}
 
@@ -113,7 +113,8 @@ def test_build_signal_co2_calculation():
     assert abs(signal["nodes"][0]["co2_g_per_s"] - expected) < 1e-9
 
 
-def test_build_signal_unmapped_node_gets_zero_watts():
+@patch("main.get_node_capacities", return_value=_NODE_CAPACITIES)
+def test_build_signal_unmapped_node_gets_zero_watts(_mock_cap):
     """A K8s node with no vSphere mapping reports 0 watts."""
     emaps, vsphere, metrics = _make_mocks()
     mapping = {}
@@ -124,7 +125,8 @@ def test_build_signal_unmapped_node_gets_zero_watts():
     assert signal["nodes"][0]["co2_g_per_s"] == 0.0
 
 
-def test_build_signal_emaps_failure_uses_fallback():
+@patch("main.get_node_capacities", return_value=_NODE_CAPACITIES)
+def test_build_signal_emaps_failure_uses_fallback(_mock_cap):
     """If Electricity Maps fails, build_signal uses the fallback intensity."""
     emaps, vsphere, metrics = _make_mocks()
     emaps.get_current.side_effect = Exception("API down")
@@ -136,7 +138,8 @@ def test_build_signal_emaps_failure_uses_fallback():
     assert signal["zone"] == "CH"
 
 
-def test_build_signal_vsphere_failure_keeps_going():
+@patch("main.get_node_capacities", return_value=_NODE_CAPACITIES)
+def test_build_signal_vsphere_failure_keeps_going(_mock_cap):
     """If vSphere fails, nodes still appear with 0 watts (CPU/RAM intact)."""
     emaps, vsphere, metrics = _make_mocks()
     vsphere.get_vm_estimated_watts.side_effect = Exception("vCenter timeout")
@@ -145,5 +148,39 @@ def test_build_signal_vsphere_failure_keeps_going():
     signal = main.build_signal(emaps, vsphere, metrics, mapping)
 
     node = signal["nodes"][0]
-    assert node["watts"] == 0.0  # vSphere failed
-    assert node["cpu_millicores"] == 500  # but metrics-server still worked
+    assert node["watts"] == 0.0
+    assert node["cpu_millicores"] == 500
+
+
+def test_compute_thresholds_uses_forecast_p15_p85():
+    """Forecast P15/P85 is preferred over historical table when spread >= 5."""
+    forecast = [
+        {"carbon_intensity": float(i)} for i in range(20, 60)
+    ]  # 40 points, spread=39
+    green, dirty, source = main.compute_thresholds({}, forecast)
+
+    assert source == "forecast_p15_p85"
+    assert green < dirty
+    assert 20 <= green <= 30
+    assert 50 <= dirty <= 60
+
+
+def test_compute_thresholds_falls_back_to_monthly_when_spread_too_small():
+    """Historical table is used when the forecast spread is < 5 gCO2/kWh."""
+    forecast = [{"carbon_intensity": 28.0 + i * 0.1} for i in range(20)]  # spread ~1.9
+    monthly = {6: {"green": 27.6, "dirty": 33.2}}
+
+    green, dirty, source = main.compute_thresholds(monthly, forecast)
+
+    assert "monthly_table" in source
+    assert green == 27.6
+    assert dirty == 33.2
+
+
+def test_compute_thresholds_falls_back_to_monthly_when_no_forecast():
+    """Historical table is used when forecast is empty."""
+    monthly = {6: {"green": 27.6, "dirty": 33.2}}
+
+    green, dirty, source = main.compute_thresholds(monthly, [])
+
+    assert "monthly_table" in source
