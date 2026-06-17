@@ -45,9 +45,7 @@ def _pod_to_dict(pod) -> dict:
             "annotations": metadata.annotations or {},
             "ownerReferences": owners,
             "creationTimestamp": (
-                metadata.creation_timestamp.isoformat()
-                if metadata.creation_timestamp
-                else None
+                metadata.creation_timestamp.isoformat() if metadata.creation_timestamp else None
             ),
         },
         "status": {
@@ -58,11 +56,7 @@ def _pod_to_dict(pod) -> dict:
 
 def _remove_gate(v1: client.CoreV1Api, pod) -> None:
     """Patch the pod to remove the carbon-aware scheduling gate."""
-    remaining = [
-        {"name": g.name}
-        for g in (pod.spec.scheduling_gates or [])
-        if g.name != GATE_NAME
-    ]
+    remaining = [{"name": g.name} for g in (pod.spec.scheduling_gates or []) if g.name != GATE_NAME]
     body = {"spec": {"schedulingGates": remaining or None}}
     v1.patch_namespaced_pod(
         name=pod.metadata.name,
@@ -77,9 +71,7 @@ async def gate_controller_loop(signal_loader, temporal_scheduler) -> None:
 
     while True:
         try:
-            pods = v1.list_pod_for_all_namespaces(
-                field_selector="status.phase=Pending"
-            )
+            pods = v1.list_pod_for_all_namespaces(field_selector="status.phase=Pending")
 
             for pod in pods.items:
                 gates = pod.spec.scheduling_gates or []
@@ -105,12 +97,8 @@ async def gate_controller_loop(signal_loader, temporal_scheduler) -> None:
                     ).observe(ci)
                     log.info(f"Gate removed for {pod_id}: {reason}")
                 else:
-                    SCHEDULING_DECISIONS.labels(
-                        carbon_class=carbon_class, decision="delay"
-                    ).inc()
-                    CI_AT_DECISION.labels(
-                        carbon_class=carbon_class, decision="delay"
-                    ).observe(ci)
+                    SCHEDULING_DECISIONS.labels(carbon_class=carbon_class, decision="delay").inc()
+                    CI_AT_DECISION.labels(carbon_class=carbon_class, decision="delay").observe(ci)
 
                     optimal = temporal_scheduler.find_optimal_window()
                     if optimal and optimal["potential_gain"] > 0:
