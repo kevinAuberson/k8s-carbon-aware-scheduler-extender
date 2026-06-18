@@ -12,7 +12,7 @@ import os
 import ssl
 
 from cache import cache
-from pyVim.connect import Disconnect, SmartConnect
+from pyvim.connect import Disconnect, SmartConnect
 from pyVmomi import vim
 
 
