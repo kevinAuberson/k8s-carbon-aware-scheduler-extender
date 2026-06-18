@@ -73,10 +73,16 @@ async def gate_controller_loop(signal_loader, temporal_scheduler) -> None:
         try:
             pods = v1.list_pod_for_all_namespaces(field_selector="status.phase=Pending")
 
+            gated = []
             for pod in pods.items:
                 gates = pod.spec.scheduling_gates or []
-                if not any(g.name == GATE_NAME for g in gates):
-                    continue
+                if any(g.name == GATE_NAME for g in gates):
+                    gated.append(pod)
+
+            if gated:
+                log.info(f"Found {len(gated)} gated pod(s)")
+
+            for pod in gated:
 
                 pod_dict = _pod_to_dict(pod)
                 pod_id = f"{pod.metadata.namespace}/{pod.metadata.name}"
