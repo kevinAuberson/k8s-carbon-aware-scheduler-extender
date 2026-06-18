@@ -83,7 +83,6 @@ async def gate_controller_loop(signal_loader, temporal_scheduler) -> None:
                 log.info(f"Found {len(gated)} gated pod(s)")
 
             for pod in gated:
-
                 pod_dict = _pod_to_dict(pod)
                 pod_id = f"{pod.metadata.namespace}/{pod.metadata.name}"
 
