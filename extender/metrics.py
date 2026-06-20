@@ -61,6 +61,13 @@ CI_AT_DECISION = Histogram(
     buckets=[10, 20, 30, 40, 50, 60, 70, 80, 100, 150, 200, 300],
 )
 
+GATE_DELAY_DURATION = Histogram(
+    "carbon_gate_delay_duration_seconds",
+    "Time a pod spent gated (between creation and gate removal)",
+    ["carbon_class"],
+    buckets=[30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400],
+)
+
 # Gain potentiel lors d'un délai (CI_actuelle - CI_optimale)
 DELAY_GAIN = Histogram(
     "carbon_delay_gain_g_per_kwh",

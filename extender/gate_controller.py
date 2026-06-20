@@ -11,10 +11,11 @@ Description: Background controller that manages carbon-aware schedulingGates.
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from kubernetes import client
 
-from metrics import CI_AT_DECISION, DELAY_GAIN, SCHEDULING_DECISIONS
+from metrics import CI_AT_DECISION, DELAY_GAIN, GATE_DELAY_DURATION, SCHEDULING_DECISIONS
 from temporal import DelayDecision
 from workload_classifier import classify
 
@@ -100,6 +101,11 @@ async def gate_controller_loop(signal_loader, temporal_scheduler) -> None:
                     CI_AT_DECISION.labels(
                         carbon_class=carbon_class, decision="schedule_now"
                     ).observe(ci)
+
+                    if pod.metadata.creation_timestamp:
+                        delay_s = (datetime.now(UTC) - pod.metadata.creation_timestamp).total_seconds()
+                        GATE_DELAY_DURATION.labels(carbon_class=carbon_class).observe(delay_s)
+
                     log.info(f"Gate removed for {pod_id}: {reason}")
                 else:
                     SCHEDULING_DECISIONS.labels(carbon_class=carbon_class, decision="delay").inc()
