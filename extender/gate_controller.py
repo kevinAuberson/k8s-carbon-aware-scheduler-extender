@@ -103,7 +103,9 @@ async def gate_controller_loop(signal_loader, temporal_scheduler) -> None:
                     ).observe(ci)
 
                     if pod.metadata.creation_timestamp:
-                        delay_s = (datetime.now(UTC) - pod.metadata.creation_timestamp).total_seconds()
+                        delay_s = (
+                            datetime.now(UTC) - pod.metadata.creation_timestamp
+                        ).total_seconds()
                         GATE_DELAY_DURATION.labels(carbon_class=carbon_class).observe(delay_s)
 
                     log.info(f"Gate removed for {pod_id}: {reason}")
