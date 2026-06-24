@@ -35,11 +35,11 @@ def scorer(mock_signal):
 
 
 def test_lowest_cost_gets_highest_score(scorer):
-    """Le node le moins coûteux doit avoir le score le plus élevé.
+    """The lowest-cost node must get the highest score.
 
-    La normalisation est centrée sur la moyenne (pas min-max), donc les
-    extrêmes ne sont pas nécessairement 0 et 100. L'invariant qui compte
-    est l'ordre strict et la plage valide [0, 100].
+    Normalisation is mean-centred (not min-max), so extremes are not
+    necessarily 0 and 100. The invariant that matters is strict ordering
+    and a valid [0, 100] range.
     """
     pod = {
         "metadata": {"name": "test", "ownerReferences": [{"kind": "Deployment"}]},
@@ -52,7 +52,7 @@ def test_lowest_cost_gets_highest_score(scorer):
 
 
 def test_all_equal_returns_neutral_score():
-    """Si tous les nodes sont équivalents, tous reçoivent 50."""
+    """If all nodes are equivalent, all receive 50."""
     signal = {
         "timestamp": "2026-06-01T12:00:00+00:00",
         "grid_intensity_g_per_kwh": 100,
@@ -72,7 +72,7 @@ def test_all_equal_returns_neutral_score():
 
 
 def test_no_signal_returns_neutral():
-    """Sans signal, tous les nodes reçoivent un score neutre."""
+    """Without signal, all nodes receive a neutral score."""
     loader = MagicMock()
     loader.load.return_value = None
     scorer = CarbonScorer(loader)
@@ -84,8 +84,10 @@ def test_no_signal_returns_neutral():
 
 
 def test_best_effort_penalized_more_by_high_ci():
-    """Un pod best-effort doit être plus pénalisé sur grid carbonée qu'un latency-sensitive."""
-    # Grid très carbonée
+    """
+    A best-effort pod must be penalised more on a carbon-heavy grid than a latency-sensitive one.
+    """
+    # Very carbon-heavy grid
     signal = {
         "timestamp": "2026-06-01T12:00:00+00:00",
         "grid_intensity_g_per_kwh": 500,
@@ -110,7 +112,7 @@ def test_best_effort_penalized_more_by_high_ci():
     sl_scores = scorer.score_nodes(deployment_pod, ["clean", "dirty"])
     be_scores = scorer.score_nodes(job_besteffort, ["clean", "dirty"])
 
-    # Pour les deux, "clean" est meilleur, mais l'écart est plus grand
-    # pour best-effort (α=1.0) que pour latency-sensitive (α=0.0)
-    # Note : avec la formule actuelle, l'écart se manifeste différemment selon α
+    # For both, "clean" is better, but the gap is larger for best-effort
+    # (α=1.0) than for latency-sensitive (α=0.0).
+    # Note: with the current formula, the gap manifests differently depending on α
     assert sl_scores["clean"] >= be_scores["clean"] or sl_scores["dirty"] <= be_scores["dirty"]

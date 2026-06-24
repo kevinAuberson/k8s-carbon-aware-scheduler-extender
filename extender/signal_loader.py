@@ -17,22 +17,22 @@ from pathlib import Path
 
 log = logging.getLogger("signal_loader")
 
-# Chemin du fichier signal monté depuis le ConfigMap carbon-signal.
-# Le défaut correspond au volumeMount de production ; SIGNAL_FILE est
-# surchargeable en développement local pour pointer vers un fichier mock.
+# Path to the signal file mounted from the carbon-signal ConfigMap.
+# Default matches the production volumeMount; SIGNAL_FILE can be
+# overridden in local dev to point to a mock file.
 SIGNAL_FILE = os.getenv("SIGNAL_FILE", "/etc/carbon-signal/signal.json")
 
-# Durée du cache mémoire (secondes). Le fichier n'est relu que si
-# le cache est expiré. Réduit les I/O disque de ~3x par requête.
+# In-memory cache TTL (seconds). The file is only re-read when the
+# cache expires, reducing disk I/O by ~3x per request.
 CACHE_TTL = int(os.getenv("SIGNAL_CACHE_TTL", "5"))
 
-# Âge maximum accepté pour le signal (secondes). Au-delà, load()
-# retourne None et l'extender fait un fail-safe (schedule_now).
+# Maximum accepted signal age (seconds). Beyond this, load()
+# returns None and the extender fails safe (schedule_now).
 MAX_SIGNAL_AGE = int(os.getenv("MAX_SIGNAL_AGE", "600"))
 
 
 class SignalLoader:
-    """Charge le signal carbone avec cache mémoire et garde de fraîcheur."""
+    """Loads the carbon signal with in-memory cache and staleness guard."""
 
     def __init__(self, signal_file: str = SIGNAL_FILE):
         self.signal_file = Path(signal_file)
@@ -40,7 +40,7 @@ class SignalLoader:
         self._cache_time: float = 0.0
 
     def load(self) -> dict | None:
-        """Lit le signal courant avec cache. Retourne None si indisponible ou périmé."""
+        """Read the current signal with cache. Returns None if unavailable or stale."""
         now = time.monotonic()
         if self._cache is not None and (now - self._cache_time) < CACHE_TTL:
             return self._cache
@@ -64,6 +64,7 @@ class SignalLoader:
         return data
 
     def _read_file(self) -> dict | None:
+        """Read and validate the signal JSON file from disk."""
         try:
             data = json.loads(self.signal_file.read_text())
             self._validate(data)
@@ -76,6 +77,7 @@ class SignalLoader:
             return None
 
     def _validate(self, data: dict) -> None:
+        """Raise ValueError if required keys are missing or nodes is empty."""
         required = {"timestamp", "grid_intensity_g_per_kwh", "nodes"}
         if not required.issubset(data.keys()):
             raise ValueError(f"Missing keys: {required - data.keys()}")
@@ -83,6 +85,7 @@ class SignalLoader:
             raise ValueError("nodes must be a non-empty list")
 
     def _compute_age(self, data: dict) -> float | None:
+        """Return signal age in seconds, or None if timestamp is unparseable."""
         try:
             ts = datetime.fromisoformat(data["timestamp"])
             return (datetime.now(ts.tzinfo) - ts).total_seconds()
@@ -90,6 +93,7 @@ class SignalLoader:
             return None
 
     def get_node_data(self, node_name: str) -> dict | None:
+        """Return the signal data for a specific node, or None if not found."""
         signal = self.load()
         if not signal:
             return None
@@ -99,6 +103,7 @@ class SignalLoader:
         return None
 
     def age_seconds(self) -> float | None:
+        """Return the age of the current signal in seconds, or None if unavailable."""
         signal = self.load()
         if not signal:
             return None

@@ -14,11 +14,11 @@ import pytest
 
 from temporal import DelayDecision, TemporalScheduler
 
-# ─── Fixtures ────────────────────────────────────────────────────
+# Fixtures
 
 
 def make_forecast(current_ci, hourly_values):
-    """Génère un forecast à partir d'une liste d'intensités horaires."""
+    """Generate a forecast from a list of hourly intensities."""
     now = datetime.now(UTC)
     return [
         {
@@ -70,12 +70,12 @@ def scheduler():
     return TemporalScheduler(loader), loader
 
 
-# ─── Latency-sensitive jamais retardé ────────────────────────────
+# Latency-sensitive never delayed
 
 
 def test_latency_sensitive_never_delayed_even_red(scheduler):
     sched, loader = scheduler
-    loader.load.return_value = make_signal(ci=120)  # pic record
+    loader.load.return_value = make_signal(ci=120)
     pod = {
         "metadata": {
             "name": "web",
@@ -87,13 +87,13 @@ def test_latency_sensitive_never_delayed_even_red(scheduler):
     assert decision == DelayDecision.SCHEDULE_NOW
 
 
-# ─── Best-effort : analyse du forecast ───────────────────────────
+# Best-effort: forecast analysis
 
 
 def test_besteffort_delayed_when_better_window_exists(scheduler):
-    """Best-effort : retardé si une meilleure fenêtre existe."""
+    """Best-effort: delayed when a better window exists."""
     sched, loader = scheduler
-    # Actuellement à 65, mais ça descend à 30 dans 3h
+    # Currently at 65, drops to 30 in 3h
     forecast = make_forecast(65, [60, 50, 30, 35, 40, 45])
     loader.load.return_value = make_signal(ci=65, forecast=forecast)
 
@@ -103,9 +103,9 @@ def test_besteffort_delayed_when_better_window_exists(scheduler):
 
 
 def test_besteffort_scheduled_when_already_optimal(scheduler):
-    """Best-effort : scheduled si on est déjà au minimum."""
+    """Best-effort: scheduled when already at minimum."""
     sched, loader = scheduler
-    # On est à 45, le forecast monte → autant scheduler maintenant
+    # At 45, forecast only goes up -> schedule now
     forecast = make_forecast(45, [50, 60, 70, 65, 55, 50])
     loader.load.return_value = make_signal(ci=45, forecast=forecast)
 
@@ -115,9 +115,9 @@ def test_besteffort_scheduled_when_already_optimal(scheduler):
 
 
 def test_besteffort_scheduled_when_gain_is_small(scheduler):
-    """Best-effort : pas retardé si le gain est trop petit."""
+    """Best-effort: not delayed when the gain is too small."""
     sched, loader = scheduler
-    # 45 maintenant, 42 dans 5h → gain de 3 seulement < MIN_GAIN_TO_DELAY (10)
+    # 45 now, 42 in 5h -> gain of 3 only < MIN_GAIN_TO_DELAY (10)
     forecast = make_forecast(45, [44, 43, 43, 42, 42])
     loader.load.return_value = make_signal(ci=45, forecast=forecast)
 
@@ -126,11 +126,11 @@ def test_besteffort_scheduled_when_gain_is_small(scheduler):
     assert "near-optimal" in reason.lower() or "green" in reason.lower()
 
 
-# ─── Batch : seulement retardé en zone rouge ─────────────────────
+# Batch: only delayed in red zone
 
 
 def test_batch_flexible_delayed_in_red_zone(scheduler):
-    """Batch flexible : retardé seulement si zone rouge."""
+    """Batch flexible: delayed only in red zone."""
     sched, loader = scheduler
     forecast = make_forecast(85, [80, 60, 40, 50, 60])
     loader.load.return_value = make_signal(ci=85, forecast=forecast)
@@ -141,7 +141,7 @@ def test_batch_flexible_delayed_in_red_zone(scheduler):
 
 
 def test_batch_flexible_not_delayed_in_orange(scheduler):
-    """Batch flexible : pas retardé en zone orange (40-70)."""
+    """Batch flexible: not delayed in orange zone (40-70)."""
     sched, loader = scheduler
     forecast = make_forecast(55, [50, 40, 35, 40, 50])
     loader.load.return_value = make_signal(ci=55, forecast=forecast)
@@ -152,7 +152,7 @@ def test_batch_flexible_not_delayed_in_orange(scheduler):
 
 
 def test_batch_flexible_by_default(scheduler):
-    """Batch sans annotation est flexible par défaut et peut être retardé."""
+    """Batch without annotation is flexible by default and can be delayed."""
     sched, loader = scheduler
     forecast = make_forecast(120, [80, 60, 40, 50, 60])
     loader.load.return_value = make_signal(ci=120, forecast=forecast)
@@ -162,7 +162,7 @@ def test_batch_flexible_by_default(scheduler):
 
 
 def test_batch_opt_out_never_delayed(scheduler):
-    """Batch avec flexible=false n'est jamais retardé."""
+    """Batch with flexible=false is never delayed."""
     sched, loader = scheduler
     forecast = make_forecast(120, [80, 60, 40, 50, 60])
     loader.load.return_value = make_signal(ci=120, forecast=forecast)
@@ -172,7 +172,7 @@ def test_batch_opt_out_never_delayed(scheduler):
     assert decision == DelayDecision.SCHEDULE_NOW
 
 
-# ─── Deadlines ───────────────────────────────────────────────────
+# Deadlines
 
 
 def test_deadline_in_past_forces_schedule(scheduler):
@@ -189,43 +189,42 @@ def test_deadline_in_past_forces_schedule(scheduler):
 
 
 def test_deadline_excludes_far_future_optimal(scheduler):
-    """Le forecast est filtré par la deadline."""
+    """Forecast is filtered by the deadline."""
     sched, loader = scheduler
-    # Optimal à +5h, mais deadline dans +2h → on regarde uniquement +1h et +2h
-    forecast = make_forecast(70, [65, 60, 55, 50, 30])  # min à +5h (30)
+    # Optimal at +5h, but deadline in +2h -> only +1h and +2h are considered
+    forecast = make_forecast(70, [65, 60, 55, 50, 30])  # min at +5h (30)
     loader.load.return_value = make_signal(ci=70, forecast=forecast)
 
     deadline = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
     pod = make_pod_besteffort(annotations={"carbon-aware/deadline": deadline})
 
     decision, reason = sched.decide(pod)
-    # Le min accessible avant deadline est 60 (+2h), gain de 10 → on attend
-    # MAIS si MIN_GAIN_TO_DELAY=10, c'est borderline. Vérifie ton seuil.
-    # (Avec gain=10 et MIN_GAIN_TO_DELAY=10, "< 10" est False, donc on attend)
+    # Accessible min before deadline is 60 (+2h), gain=10
+    # With gain=10 and MIN_GAIN_TO_DELAY=10, "< 10" is False -> delay
     assert decision == DelayDecision.DELAY
 
 
-# ─── Max delay ───────────────────────────────────────────────────
+# Max delay
 
 
 def test_max_delay_exceeded_forces_schedule(scheduler):
-    """Si le pod attend depuis trop longtemps, on force le scheduling."""
+    """If the pod has been waiting too long, force scheduling."""
     sched, loader = scheduler
     forecast = make_forecast(100, [80, 60, 40])
     loader.load.return_value = make_signal(ci=100, forecast=forecast)
 
-    # Pod créé il y a 25h, max-delay par défaut = 24h → expired
+    # Pod created 25h ago, default max-delay = 24h -> expired
     pod = make_pod_besteffort(age_hours=25)
     decision, reason = sched.decide(pod)
     assert decision == DelayDecision.SCHEDULE_NOW
     assert "deadline" in reason.lower() or "max-delay" in reason.lower()
 
 
-# ─── Pas de forecast (fallback) ──────────────────────────────────
+# No forecast (fallback)
 
 
 def test_no_forecast_falls_back_to_zone_logic(scheduler):
-    """Sans forecast, on utilise la logique simple à 2 zones."""
+    """Without forecast, falls back to simple 2-zone logic."""
     sched, loader = scheduler
     loader.load.return_value = make_signal(ci=85, forecast=None)
 
@@ -233,11 +232,11 @@ def test_no_forecast_falls_back_to_zone_logic(scheduler):
     assert decision == DelayDecision.DELAY
 
 
-# ─── Pas de signal ────────────────────────────────────────────────
+# No signal
 
 
 def test_no_signal_fails_safe(scheduler):
-    """Sans signal, on schedule par défaut (fail-safe)."""
+    """Without signal, schedules by default (fail-safe)."""
     sched, loader = scheduler
     loader.load.return_value = None
 
@@ -245,11 +244,11 @@ def test_no_signal_fails_safe(scheduler):
     assert decision == DelayDecision.SCHEDULE_NOW
 
 
-# ─── Grid déjà verte ─────────────────────────────────────────────
+# Grid already green
 
 
 def test_green_grid_always_schedules(scheduler):
-    """Grid déjà verte → schedule tout le monde."""
+    """Green grid -> schedule everyone."""
     sched, loader = scheduler
     forecast = make_forecast(30, [25, 20, 15, 20, 25])
     loader.load.return_value = make_signal(ci=30, forecast=forecast)

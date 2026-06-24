@@ -26,7 +26,7 @@ PENALTY_FACTORS = {
     CarbonClass.BEST_EFFORT: 1.0,
 }
 
-# Labels valides pour override manuel
+# Valid labels for manual override
 VALID_LABELS = {c.value for c in CarbonClass}
 
 
@@ -37,11 +37,11 @@ DAEMON_KINDS = {"DaemonSet"}
 
 def classify(pod: dict) -> CarbonClass:
     """
-    Classifie un pod selon la table 4.1 de la spec.
+    Classify a pod into a carbon class.
 
-    Ordre de priorité :
-    1. Label explicite `carbon-class` sur le pod (override manuel)
-    2. Classification automatique : owner kind + QoS class
+    Priority:
+    1. Explicit `carbon-class` label on the pod (manual override)
+    2. Automatic classification based on owner kind + QoS class
 
     Returns:
         CarbonClass: latency-sensitive | batch | best-effort
@@ -49,7 +49,7 @@ def classify(pod: dict) -> CarbonClass:
     metadata = pod.get("metadata", {})
     pod_name = metadata.get("name", "?")
 
-    # ── Étape 1 : Label explicite (override manuel) ───────────
+    # Step 1: explicit label
     labels = metadata.get("labels", {})
     explicit = labels.get("carbon-class")
     if explicit in VALID_LABELS:
@@ -62,34 +62,34 @@ def classify(pod: dict) -> CarbonClass:
             f"falling back to automatic classification"
         )
 
-    # ── Étape 2 : Classification automatique ──────────────────
+    # Step 2: automatic classification
     owner_kind = _get_controller_kind(metadata)
     qos = pod.get("status", {}).get("qosClass", "BestEffort")
 
     log.debug(f"Pod {pod_name}: owner={owner_kind}, qos={qos}")
 
-    # 2a. DaemonSet : toujours latency-sensitive (cf. tableau)
+    # 2a. DaemonSet: always latency-sensitive
     if owner_kind in DAEMON_KINDS:
         log.info(f"Pod {pod_name}: DaemonSet → latency-sensitive")
         return CarbonClass.LATENCY_SENSITIVE
 
-    # 2b. BestEffort : toujours best-effort (sauf DaemonSet géré au-dessus)
+    # 2b. BestEffort QoS: always best-effort (DaemonSet handled above)
     if qos == "BestEffort":
         log.info(f"Pod {pod_name}: QoS BestEffort → best-effort")
         return CarbonClass.BEST_EFFORT
 
-    # 2c. Long-running (Deployment/StatefulSet/ReplicaSet)
+    # 2c. Long-running (Deployment / StatefulSet / ReplicaSet)
     if owner_kind in LONG_RUNNING_KINDS:
         log.info(f"Pod {pod_name}: {owner_kind} + {qos} → latency-sensitive")
         return CarbonClass.LATENCY_SENSITIVE
 
-    # 2d. Batch (Job/CronJob)
+    # 2d. Batch (Job / CronJob)
     if owner_kind in BATCH_KINDS:
         log.info(f"Pod {pod_name}: {owner_kind} + {qos} → batch")
         return CarbonClass.BATCH
 
-    # 2e. Fallback : pod orphelin ou kind inconnu
-    # QoS discrimine : Guaranteed/Burstable → standalone avec resources → latency-sensitive
+    # 2e. Fallback: orphan pod or unknown kind
+    # Guaranteed/Burstable QoS implies resource requests → latency-sensitive
     if qos in ("Guaranteed", "Burstable"):
         log.info(f"Pod {pod_name}: orphan/unknown owner + QoS={qos} → latency-sensitive")
         return CarbonClass.LATENCY_SENSITIVE
@@ -100,20 +100,20 @@ def classify(pod: dict) -> CarbonClass:
 
 def _get_controller_kind(metadata: dict) -> str | None:
     """
-    Récupère le kind du controller owner du pod.
+    Return the kind of the pod's controller owner.
 
-    Un pod peut avoir plusieurs owners, mais un seul est marqué
-    `controller: true` — c'est celui qui pilote son cycle de vie.
+    A pod may have several owners, but only one is marked `controller: true`
+    — that is the one managing its lifecycle.
 
     Returns:
-        Le kind du controller (ex: "ReplicaSet", "Job"), ou None si orphelin.
+        The controller kind (e.g. "ReplicaSet", "Job"), or None if orphan.
     """
     refs = metadata.get("ownerReferences", [])
 
-    # Cherche celui marqué controller=true (le bon)
+    # Look for the one marked controller=true
     for ref in refs:
         if ref.get("controller", False):
             return ref.get("kind")
 
-    # Fallback : premier owner si aucun n'est marqué controller
+    # Fallback: first owner if none is marked controller
     return refs[0].get("kind") if refs else None

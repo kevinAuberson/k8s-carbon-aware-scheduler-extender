@@ -64,7 +64,7 @@ def client(mock_loader):
         yield TestClient(extender.app), mock_loader
 
 
-# ─── /healthz ────────────────────────────────────────────────────
+# /healthz
 
 
 def test_healthz_ok(client):
@@ -86,13 +86,13 @@ def test_healthz_no_signal(client):
     assert resp.json()["signal_available"] is False
 
 
-# ─── /filter ─────────────────────────────────────────────────────
+# /filter
 
 
 def test_filter_passes_all_nodes_when_schedule_now(client):
-    """Grille verte → schedule_now → tous les nodes passent."""
+    """Green grid -> schedule_now -> all nodes pass through."""
     c, loader = client
-    loader.load.return_value = make_signal(ci=20)  # sous GREEN_THRESHOLD=40
+    loader.load.return_value = make_signal(ci=20)  # below GREEN_THRESHOLD=40
     payload = make_filter_payload(["node-a", "node-b"])
     resp = c.post("/filter", json=payload)
     assert resp.status_code == 200
@@ -102,8 +102,8 @@ def test_filter_passes_all_nodes_when_schedule_now(client):
 
 
 def test_filter_passes_all_nodes_even_on_red_grid(client):
-    """Grille rouge + best-effort → /filter est un pass-through (temporal shifting
-    est géré par le gate controller via schedulingGates, pas par /filter)."""
+    """Red grid + best-effort -> /filter is a pass-through (temporal shifting
+    is handled by the gate controller via schedulingGates, not by /filter)."""
     c, loader = client
     loader.load.return_value = make_signal(ci=85)
     be_pod = {
@@ -124,7 +124,7 @@ def test_filter_passes_all_nodes_even_on_red_grid(client):
 
 
 def test_filter_never_delays_latency_sensitive(client):
-    """Deployment Guaranteed → latency-sensitive → jamais retardé."""
+    """Deployment Guaranteed -> latency-sensitive -> never delayed."""
     c, loader = client
     loader.load.return_value = make_signal(ci=120)
     ls_pod = {
@@ -139,7 +139,7 @@ def test_filter_never_delays_latency_sensitive(client):
     assert resp.json()["Nodes"]["items"] != []
 
 
-# ─── /prioritize ─────────────────────────────────────────────────
+# /prioritize
 
 
 def test_prioritize_scores_all_nodes(client):
@@ -170,7 +170,7 @@ def test_prioritize_no_signal_returns_neutral(client):
     assert resp.json()["HostPriorityList"][0]["Score"] == 50
 
 
-# ─── /debug/forecast ─────────────────────────────────────────────
+# /debug/forecast
 
 
 def test_debug_forecast_no_signal(client):

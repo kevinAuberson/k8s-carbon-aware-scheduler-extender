@@ -9,11 +9,11 @@ Description: Unit tests for workload_classifier.py — verifies that pods are
 
 from workload_classifier import CarbonClass, classify
 
-# ─── Override par label explicite ─────────────────────────────
+# Explicit label override
 
 
 def test_explicit_label_overrides_classification():
-    """Le label carbon-class doit prendre le pas sur la logique auto."""
+    """The carbon-class label must take precedence over automatic classification."""
     pod = {
         "metadata": {
             "name": "test",
@@ -22,12 +22,12 @@ def test_explicit_label_overrides_classification():
         },
         "status": {"qosClass": "Guaranteed"},
     }
-    # Sans le label, serait latency-sensitive ; avec le label, best-effort
+    # Without label -> latency-sensitive; with label -> best-effort
     assert classify(pod) == CarbonClass.BEST_EFFORT
 
 
 def test_invalid_label_falls_back_to_auto():
-    """Un label invalide est ignoré, on passe en auto."""
+    """An invalid label is ignored, falls back to automatic classification."""
     pod = {
         "metadata": {
             "name": "test",
@@ -36,21 +36,20 @@ def test_invalid_label_falls_back_to_auto():
         },
         "status": {"qosClass": "Guaranteed"},
     }
-    # Doit faire la classification auto
     assert classify(pod) == CarbonClass.LATENCY_SENSITIVE
 
 
-# ─── controller: true vs [0] ──────────────────────────────────
+# controller: true vs [0]
 
 
 def test_picks_controller_owner_not_first():
-    """Doit choisir l'owner avec controller=true, pas juste [0]."""
+    """Must pick the owner with controller=true, not just [0]."""
     pod = {
         "metadata": {
             "name": "test",
             "ownerReferences": [
                 {"kind": "SomeOther", "controller": False},
-                {"kind": "Job", "controller": True},  # ← celui-ci
+                {"kind": "Job", "controller": True},
             ],
         },
         "status": {"qosClass": "Burstable"},
@@ -58,7 +57,7 @@ def test_picks_controller_owner_not_first():
     assert classify(pod) == CarbonClass.BATCH
 
 
-# ─── Logique de classification (mise à jour) ──────────────────
+# Classification logic
 
 
 def test_daemonset_is_latency_sensitive():
@@ -67,13 +66,13 @@ def test_daemonset_is_latency_sensitive():
             "name": "test",
             "ownerReferences": [{"kind": "DaemonSet", "controller": True}],
         },
-        "status": {"qosClass": "BestEffort"},  # même BestEffort
+        "status": {"qosClass": "BestEffort"},  # even BestEffort
     }
     assert classify(pod) == CarbonClass.LATENCY_SENSITIVE
 
 
 def test_deployment_via_replicaset():
-    """Un Pod de Deployment apparaît avec owner=ReplicaSet."""
+    """A Deployment pod appears with owner=ReplicaSet."""
     pod = {
         "metadata": {
             "name": "test",
@@ -129,7 +128,7 @@ def test_deployment_besteffort_is_best_effort():
 
 
 def test_standalone_pod_defaults_to_best_effort():
-    """Pod sans owner (kubectl run direct) → best-effort par défaut."""
+    """Pod without owner (kubectl run) -> best-effort by default."""
     pod = {
         "metadata": {"name": "test"},
         "status": {"qosClass": "BestEffort"},

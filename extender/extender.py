@@ -180,7 +180,7 @@ async def health():
 
 @app.get("/debug/decide")
 async def debug_decide():
-    """Affiche la décision pour un pod fictif (debug)."""
+    """Show the decision for synthetic test pods (debug)."""
     fake_pods = {
         "deployment-pod": {
             "metadata": {
@@ -221,7 +221,7 @@ async def debug_decide():
 
 @app.get("/debug/forecast")
 async def debug_forecast():
-    """Affiche le forecast et le moment optimal."""
+    """Show the forecast and the optimal scheduling window."""
     signal = signal_loader.load()
     if not signal:
         return {"error": "no signal"}

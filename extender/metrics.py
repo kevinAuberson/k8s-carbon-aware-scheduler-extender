@@ -10,7 +10,7 @@ Description: Prometheus metric definitions for the carbon-aware scheduler
 
 from prometheus_client import Counter, Gauge, Histogram
 
-# ─── Signal continu (rafraîchi toutes les 30s en arrière-plan) ────────────────
+# Continuous signal gauges (refreshed every 30s in background)
 
 GRID_INTENSITY = Gauge(
     "carbon_grid_intensity_current_g_per_kwh",
@@ -44,7 +44,7 @@ NODE_CO2_G_PER_S = Gauge(
     ["node"],
 )
 
-# ─── Décisions de scheduling (/filter) ────────────────────────────────────────
+# Scheduling decisions
 
 SCHEDULING_DECISIONS = Counter(
     "carbon_scheduling_decisions_total",
@@ -52,8 +52,8 @@ SCHEDULING_DECISIONS = Counter(
     ["carbon_class", "decision"],  # decision: schedule_now | delay
 )
 
-# Intensité carbone au moment de la décision — permet de comparer la CI
-# moyenne à laquelle carbon-aware vs default scheduler place les pods
+# Carbon intensity at decision time — allows comparing the average CI
+# at which carbon-aware vs default scheduler places pods
 CI_AT_DECISION = Histogram(
     "carbon_ci_at_decision_g_per_kwh",
     "Grid carbon intensity (gCO2eq/kWh) at the moment of the scheduling decision",
@@ -68,7 +68,7 @@ GATE_DELAY_DURATION = Histogram(
     buckets=[30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400],
 )
 
-# Gain potentiel lors d'un délai (CI_actuelle - CI_optimale)
+# Potential gain when delaying (current_CI - optimal_CI)
 DELAY_GAIN = Histogram(
     "carbon_delay_gain_g_per_kwh",
     "Potential CI gain (gCO2eq/kWh) when a pod is delayed to a greener window",
@@ -76,7 +76,7 @@ DELAY_GAIN = Histogram(
     buckets=[5, 10, 15, 20, 30, 40, 50, 75, 100],
 )
 
-# ─── Scoring des nœuds (/prioritize) ──────────────────────────────────────────
+# Node scoring (/prioritize)
 
 NODE_SELECTED = Counter(
     "carbon_node_selected_total",

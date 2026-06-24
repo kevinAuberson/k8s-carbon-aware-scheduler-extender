@@ -18,32 +18,23 @@ from workload_classifier import CarbonClass, classify
 log = logging.getLogger("temporal")
 
 
-# ─── Configuration ─────────────────────────────────────────────────
-
-# Seuils de dernier recours — utilisés uniquement en développement local
-# (sans aggregator). En production, les seuils dynamiques viennent du
-# ConfigMap carbon-signal (P15/P85 du forecast ou table mensuelle historique)
-# et prennent toujours le dessus sur ces valeurs.
+# Fallback thresholds — used only in local dev (no aggregator).
+# In production, dynamic thresholds from the carbon-signal ConfigMap
+# (P15/P85 of forecast or monthly historical table) always take precedence.
 GREEN_THRESHOLD = int(os.getenv("GREEN_THRESHOLD_G_PER_KWH", "40"))
 DIRTY_THRESHOLD = int(os.getenv("DIRTY_THRESHOLD_G_PER_KWH", "70"))
 
-# Délai max par défaut = horizon du forecast (24h)
-# Un pod flexible ne sera jamais retardé plus de 24h
+# By default a flexible pod will never be delayed more than 24 hours
 DEFAULT_MAX_DELAY_HOURS = int(os.getenv("DEFAULT_MAX_DELAY_HOURS", "24"))
 
-# Gain minimum (gCO₂eq/kWh) pour qu'il vaille la peine d'attendre
-# Évite de retarder un pod pour gagner 2 gCO₂/kWh = négligeable
+# Minimum gain (gCO2eq/kWh) to justify delaying a pod.
+# Avoids delaying for a negligible 2 gCO2/kWh improvement.
 MIN_GAIN_TO_DELAY = int(os.getenv("MIN_GAIN_TO_DELAY_G_PER_KWH", "10"))
 
-
-# ─── Annotations supportées ────────────────────────────────────────
 
 ANN_FLEXIBLE = "carbon-aware/flexible"
 ANN_DEADLINE = "carbon-aware/deadline"
 ANN_MAX_DELAY = "carbon-aware/max-delay-hours"
-
-
-# ─── Types ─────────────────────────────────────────────────────────
 
 
 class DelayDecision(StrEnum):
@@ -51,22 +42,19 @@ class DelayDecision(StrEnum):
     DELAY = "delay"
 
 
-# ─── Moteur de décision ────────────────────────────────────────────
-
-
 class TemporalScheduler:
     """
-    Décide si un pod doit être schedulé maintenant ou retardé.
+    Decides whether a pod should be scheduled now or delayed.
 
-    Stratégie :
-    1. Pods latency-sensitive → jamais retardés
-    2. Pods non flexibles → jamais retardés
-    3. Sans signal/forecast → fail-safe vers SCHEDULE_NOW
-    4. Avec forecast :
-       - Cherche la fenêtre optimale (CI minimale) avant la deadline
-       - Si la fenêtre actuelle est déjà optimale ou quasi → SCHEDULE_NOW
-       - Sinon, attend (le scheduler réessaiera dans ~30s)
-    5. Si deadline atteinte ou max_delay dépassé → SCHEDULE_NOW de force
+    Strategy:
+    1. Latency-sensitive pods -> never delayed
+    2. Non-flexible pods -> never delayed
+    3. No signal/forecast -> fail-safe to SCHEDULE_NOW
+    4. With forecast:
+       - Find the optimal window (lowest CI) before the deadline
+       - If the current window is already optimal or near-optimal -> SCHEDULE_NOW
+       - Otherwise, wait (the controller will re-evaluate in ~30s)
+    5. If deadline reached or max_delay exceeded -> force SCHEDULE_NOW
     """
 
     def __init__(
@@ -81,36 +69,34 @@ class TemporalScheduler:
         self.dirty_threshold = dirty_threshold
         self.min_gain_to_delay = min_gain_to_delay
 
-    # ─── Point d'entrée ──────────────────────────────────────────
-
     def decide(self, pod: dict) -> tuple[DelayDecision, str]:
-        """Décide pour un pod donné : schedule maintenant ou retarder."""
+        """Decide for a given pod: schedule now or delay."""
         carbon_class = classify(pod)
 
-        # Pas flexible → jamais retardé.
-        # _is_flexible gère toutes les classes :
-        #   - LATENCY_SENSITIVE sans annotation → pas flexible (schedule immédiat)
-        #   - LATENCY_SENSITIVE avec deadline ou flexible=true → flexible (opt-in explicite)
-        #   - BATCH / BEST_EFFORT → flexible par défaut (opt-out via flexible=false)
+        # Not flexible -> never delayed.
+        # _is_flexible handles all classes:
+        #   - LATENCY_SENSITIVE without annotation -> not flexible (immediate schedule)
+        #   - LATENCY_SENSITIVE with deadline or flexible=true -> flexible (explicit opt-in)
+        #   - BATCH / BEST_EFFORT -> flexible by default (opt-out via flexible=false)
         if not self._is_flexible(pod, carbon_class):
             return self._now(f"{carbon_class.value}: not flexible")
 
-        # 3. Charger le signal
+        # Load the carbon signal
         signal = self.signal_loader.load()
         if not signal:
             return self._now("no signal available (fail-safe)")
 
         current_ci = signal["grid_intensity_g_per_kwh"]
 
-        # Seuils dynamiques : signal > env vars (fallback)
+        # Dynamic thresholds: signal > env vars (fallback)
         green_threshold = signal.get("green_threshold_g_per_kwh", self.green_threshold)
         dirty_threshold = signal.get("dirty_threshold_g_per_kwh", self.dirty_threshold)
 
-        # 4. Si déjà très propre → schedule
+        # Already clean -> schedule immediately
         if current_ci <= green_threshold:
             return self._now(f"grid already green ({current_ci} ≤ {green_threshold:.0f})")
 
-        # 5. Vérifier la deadline (atteinte ?)
+        # Check deadline (reached?)
         deadline = self._parse_deadline(pod)
         max_delay_end = self._compute_max_delay_end(pod)
         effective_deadline = self._min_dt(deadline, max_delay_end)
@@ -118,17 +104,15 @@ class TemporalScheduler:
         if effective_deadline and datetime.now(UTC) >= effective_deadline:
             return self._now("deadline/max-delay reached, forcing schedule")
 
-        # 6. Analyser le forecast pour trouver la fenêtre optimale
+        # Analyse forecast to find the optimal window
         forecast = signal.get("forecast_24h", [])
         if not forecast:
-            # Pas de forecast : fallback sur logique simple à 2 zones
+            # No forecast: fall back to simple 2-zone logic
             return self._decide_without_forecast(pod, carbon_class, current_ci, dirty_threshold)
 
         return self._decide_with_forecast(
             pod, carbon_class, current_ci, forecast, effective_deadline, dirty_threshold
         )
-
-    # ─── Logique avec forecast (le bijou) ────────────────────────
 
     def _decide_with_forecast(
         self,
@@ -139,56 +123,50 @@ class TemporalScheduler:
         effective_deadline: datetime | None,
         dirty_threshold: float | None = None,
     ) -> tuple[DelayDecision, str]:
-        """
-        Cherche le moment optimal pour exécuter le pod dans le forecast.
-        """
-        # Filtrer le forecast pour ne garder que les points avant la deadline
+        """Find the optimal execution time for the pod within the forecast window."""
+        # Keep only forecast points before the deadline
         valid_forecast = self._filter_before_deadline(forecast, effective_deadline)
 
         if not valid_forecast:
             return self._now("no forecast point before deadline")
 
-        # Trouver le minimum d'intensité dans la fenêtre disponible
+        # Find the lowest CI in the available window
         min_point = min(valid_forecast, key=lambda p: p["carbon_intensity"])
         min_ci = min_point["carbon_intensity"]
         min_dt = min_point["datetime"]
 
         gain = current_ci - min_ci
 
-        # Cas 1 : on est déjà au minimum (ou quasi) → schedule maintenant
+        # Case 1: already at or near optimal -> schedule now
         if gain < self.min_gain_to_delay:
             return self._now(
                 f"current CI={current_ci:.0f} is already near-optimal "
                 f"(min forecast={min_ci:.0f}, gain={gain:.0f} < {self.min_gain_to_delay})"
             )
 
-        # Cas 2 : ça vaut la peine d'attendre
-        # On ne schedule QUE si l'intensité actuelle est dans une zone "rouge",
-        # OU si le gain est très important
-        if carbon_class == CarbonClass.BEST_EFFORT:
-            # Best-effort : on est strict, on attend dès que ça vaut le coup
+        # Case 2: worth waiting -> zone-based logic
+        effective_dirty = dirty_threshold if dirty_threshold is not None else self.dirty_threshold
+
+        if current_ci > effective_dirty:
+            # Red zone -> all flexible pods wait
             return self._delay(
-                f"best-effort: waiting for better window "
+                f"{carbon_class.value} in red zone: waiting "
+                f"(now={current_ci:.0f} > {effective_dirty:.0f}, "
+                f"optimal={min_ci:.0f} at {min_dt}, gain={gain:.0f})"
+            )
+
+        if carbon_class == CarbonClass.BEST_EFFORT:
+            # Orange zone -> only best-effort waits
+            return self._delay(
+                f"best-effort in orange zone: waiting "
                 f"(now={current_ci:.0f}, optimal={min_ci:.0f} at {min_dt}, "
                 f"gain={gain:.0f})"
             )
 
-        if carbon_class == CarbonClass.BATCH:
-            # Batch : on attend seulement si on est en zone rouge
-            effective_dirty = (
-                dirty_threshold if dirty_threshold is not None else self.dirty_threshold
-            )
-            if current_ci > effective_dirty:
-                return self._delay(
-                    f"batch in red zone: waiting "
-                    f"(now={current_ci:.0f}, optimal={min_ci:.0f} at {min_dt}, "
-                    f"gain={gain:.0f})"
-                )
-            return self._now(f"batch in orange zone (CI={current_ci:.0f}), scheduling now")
-
-        return self._now(f"unhandled class {carbon_class}, defaulting to now")
-
-    # ─── Logique sans forecast (fallback) ────────────────────────
+        # Orange zone -> batch can proceed
+        return self._now(
+            f"{carbon_class.value} in orange zone (CI={current_ci:.0f}), scheduling now"
+        )
 
     def _decide_without_forecast(
         self,
@@ -198,10 +176,10 @@ class TemporalScheduler:
         dirty_threshold: float | None = None,
     ) -> tuple[DelayDecision, str]:
         """
-        Sans forecast, on fait une décision simple basée sur les seuils :
-        - Zone rouge → retarde best-effort + batch flexibles
-        - Zone orange → retarde uniquement best-effort
-        - Zone verte → schedule tout (déjà géré dans decide())
+        Without forecast, make a simple threshold-based decision:
+        - Red zone -> delay best-effort + batch
+        - Orange zone -> delay best-effort only
+        - Green zone -> schedule all (already handled in decide())
         """
         effective_dirty = dirty_threshold if dirty_threshold is not None else self.dirty_threshold
         if current_ci > effective_dirty:
@@ -209,26 +187,23 @@ class TemporalScheduler:
                 f"red zone (CI={current_ci:.0f} > {effective_dirty:.0f}), no forecast available"
             )
 
-        # Zone orange (entre green et dirty)
+        # Orange zone (between green and dirty)
         if carbon_class == CarbonClass.BEST_EFFORT:
             return self._delay(f"orange zone (CI={current_ci:.0f}), delaying best-effort")
 
         return self._now(f"orange zone (CI={current_ci:.0f}), batch can proceed")
 
-    # ─── Helpers : flexibilité ───────────────────────────────────
-
     def _is_flexible(self, pod: dict, carbon_class: CarbonClass) -> bool:
         """
-        Un pod est flexible (peut être retardé) selon ces règles, par ordre de priorité :
-        - carbon-aware/flexible=false → jamais retardé (opt-out explicite)
-        - carbon-aware/flexible=true  → toujours retardé si possible (opt-in explicite)
-        - carbon-aware/deadline présente → flexible (consentement implicite)
-        - BEST_EFFORT ou BATCH → flexible par défaut
+        A pod is flexible (can be delayed) according to these rules, by priority:
+        - carbon-aware/flexible=false -> never delayed (explicit opt-out)
+        - carbon-aware/flexible=true  -> always delayed if possible (explicit opt-in)
+        - carbon-aware/deadline present -> flexible (implicit consent)
+        - BEST_EFFORT or BATCH -> flexible by default
 
-        La durée maximale du délai est limitée par :
-        - l'annotation carbon-aware/max-delay-hours sur le pod (ex: "48" pour 2 jours,
-          "168" pour 1 semaine)
-        - sinon DEFAULT_MAX_DELAY_HOURS (env var sur l'extender, défaut 24h)
+        Maximum delay duration is bounded by:
+        - the carbon-aware/max-delay-hours annotation on the pod
+        - otherwise DEFAULT_MAX_DELAY_HOURS (env var, defaults to 24h)
         """
         annotations = pod.get("metadata", {}).get("annotations", {})
         explicit = annotations.get(ANN_FLEXIBLE, "").lower()
@@ -241,10 +216,8 @@ class TemporalScheduler:
             return True
         return carbon_class in (CarbonClass.BEST_EFFORT, CarbonClass.BATCH)
 
-    # ─── Helpers : deadlines & temps ─────────────────────────────
-
     def _parse_deadline(self, pod: dict) -> datetime | None:
-        """Parse l'annotation carbon-aware/deadline en datetime UTC."""
+        """Parse the carbon-aware/deadline annotation into a UTC datetime."""
         deadline_str = pod.get("metadata", {}).get("annotations", {}).get(ANN_DEADLINE)
         if not deadline_str:
             return None
@@ -258,10 +231,10 @@ class TemporalScheduler:
             return None
 
     def _compute_max_delay_end(self, pod: dict) -> datetime:
-        """Calcule la fin du max-delay = creationTimestamp + max_delay_hours.
+        """Compute max-delay end = creationTimestamp + max_delay_hours.
 
-        Retourne toujours une datetime pour garantir qu'aucun pod n'attend
-        indéfiniment. Si creationTimestamp est absent, la fenêtre part de now.
+        Always returns a datetime to guarantee no pod waits indefinitely.
+        Falls back to now if creationTimestamp is absent.
         """
         metadata = pod.get("metadata", {})
         created_str = metadata.get("creationTimestamp")
@@ -286,7 +259,7 @@ class TemporalScheduler:
         return created + timedelta(hours=max_hours)
 
     def _min_dt(self, a: datetime | None, b: datetime | None) -> datetime | None:
-        """Retourne le plus petit datetime non-None."""
+        """Return the earliest non-None datetime."""
         if a is None:
             return b
         if b is None:
@@ -296,7 +269,7 @@ class TemporalScheduler:
     def _filter_before_deadline(
         self, forecast: list[dict], deadline: datetime | None
     ) -> list[dict]:
-        """Garde les points du forecast situés avant la deadline."""
+        """Keep only forecast points before the deadline."""
         if not deadline:
             return forecast
         result = []
@@ -309,21 +282,14 @@ class TemporalScheduler:
                 continue
         return result
 
-    # ─── Helpers : formatage ────────────────────────────────────
-
     def _now(self, reason: str) -> tuple[DelayDecision, str]:
         return (DelayDecision.SCHEDULE_NOW, reason)
 
     def _delay(self, reason: str) -> tuple[DelayDecision, str]:
         return (DelayDecision.DELAY, reason)
 
-    # ─── API debug ──────────────────────────────────────────────
-
     def find_optimal_window(self, hours_ahead: int = 24) -> dict | None:
-        """
-        Outil debug : retourne le moment optimal dans les N prochaines heures.
-        Utile pour /debug/forecast.
-        """
+        """Debug tool: return the optimal moment within the next N hours."""
         signal = self.signal_loader.load()
         if not signal:
             return None

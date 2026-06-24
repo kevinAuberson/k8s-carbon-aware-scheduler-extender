@@ -18,14 +18,14 @@ from workload_classifier import PENALTY_FACTORS, classify
 
 log = logging.getLogger("scoring")
 
-# Score neutre quand tous les nodes sont équivalents
+# Neutral score when all nodes are equivalent
 NEUTRAL_SCORE = 50
 MAX_SCORE = 100
 MIN_SCORE = 0
 
-# Pondération CPU/mémoire dans le coût marginal.
-# Le CPU domine la consommation dynamique, mais la RAM a un coût non
-# négligeable (lecture/écriture, refresh DRAM).
+# CPU/memory weighting in marginal cost.
+# CPU dominates dynamic power draw, but RAM has a non-negligible cost
+# (read/write cycles, DRAM refresh).
 W_CPU = float(os.getenv("SCORING_W_CPU", "0.7"))
 W_MEM = float(os.getenv("SCORING_W_MEM", "0.3"))
 
@@ -35,10 +35,7 @@ class CarbonScorer:
         self.signal_loader = signal_loader
 
     def score_nodes(self, pod: dict, node_names: list[str]) -> dict[str, int]:
-        """
-        Calcule le score 0-100 pour chaque node candidat.
-        Retourne un dict {node_name: score}.
-        """
+        """Compute a 0-100 score for each candidate node. Returns {node_name: score}."""
         signal = self.signal_loader.load()
         if not signal:
             log.warning("No signal available, returning neutral scores")
@@ -54,7 +51,7 @@ class CarbonScorer:
             f"class={carbon_class.value} α={alpha} CI={ci}gCO₂/kWh"
         )
 
-        # 1. Calculer le coût marginal pour chaque node
+        # 1. Compute marginal cost for each node
         marginal_costs = {}
         for name in node_names:
             cost = self._marginal_cost(name, signal, alpha, ci_norm)
@@ -65,7 +62,7 @@ class CarbonScorer:
             log.warning("No node data available, returning neutral scores")
             return {name: NEUTRAL_SCORE for name in node_names}
 
-        # 2. Normaliser en scores 0-100 (cf. 4.2.3)
+        # 2. Normalize to 0-100 scores
         return self._normalize_to_scores(marginal_costs, node_names)
 
     def _marginal_cost(
@@ -105,30 +102,26 @@ class CarbonScorer:
         return min(node.get("memory_mib", 0) / 8192, 1.0)
 
     def _normalize_ci(self, ci: int) -> float:
-        """
-        Normalise la grid intensity entre 0 et 1.
-        En Suisse : 0-500 gCO₂/kWh est une fourchette réaliste.
-        """
+        """Normalize grid intensity to [0, 1]. 500 gCO₂/kWh is the realistic upper bound."""
         return min(ci / 500.0, 1.0)
 
     def _normalize_to_scores(self, costs: dict[str, float], all_nodes: list[str]) -> dict[str, int]:
         """
-        Normalise les coûts marginaux en scores 0-100 via normalisation centrée
-        sur la moyenne.
+        Normalize marginal costs to 0-100 scores using mean-centered normalization.
 
-        Formule : score = clamp(50 + 50 × (c_mean - c_node) / c_mean, 0, 100)
+        Formula: score = clamp(50 + 50 × (c_mean - c_node) / c_mean, 0, 100)
 
-        Avantages vs min-max classique :
-        - Proportionnel à l'écart réel : +5 % de coût → ~2-3 pts de différence
-        - Évite le 0/100 systématique avec 2 nodes de coûts proches
-        - Conserve le sens : coût faible → score élevé
+        Advantages over classic min-max:
+        - Proportional to actual spread: +5% cost → ~2-3 pts difference
+        - Avoids systematic 0/100 with two nodes of similar cost
+        - Preserves direction: lower cost → higher score
         """
         if not costs:
             return {name: NEUTRAL_SCORE for name in all_nodes}
 
         c_mean = sum(costs.values()) / len(costs)
 
-        # Cas dégénéré : tous les nodes sont identiques (ex. vSphere indisponible)
+        # Degenerate case: all nodes identical (e.g. vSphere unavailable)
         if c_mean < 1e-9:
             log.info("All nodes have near-zero cost, returning neutral score")
             return {name: NEUTRAL_SCORE for name in all_nodes}
