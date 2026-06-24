@@ -20,7 +20,7 @@ spec:
         - name: ghcr-auth
       containers:
         - name: extender
-          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/extender:sha-f2e7487a39699b110be16d4df166f1e60c70c0ec
+          image: ghcr.io/kevinauberson/k8s-carbon-aware-scheduler-extender/extender:sha-135fe56adefdd5e835408a63a7ae8687f9d14654
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
