@@ -1,0 +1,46 @@
+# Helm values for Apache Airflow with KubernetesExecutor
+# Install: helm install airflow apache-airflow/airflow -n airflow -f values-airflow.yaml
+
+executor: KubernetesExecutor
+
+# DAGs are synced from a git repo (this one)
+dags:
+  gitSync:
+    enabled: true
+    repo: https://github.com/aubersonkevin/k8s-carbon-aware-scheduler-extender.git
+    branch: develop
+    subPath: airflow/dags
+    wait: 60
+
+# Web UI
+webserver:
+  defaultUser:
+    enabled: true
+    username: admin
+    password: admin
+
+# Environment variable to control the benchmark phase.
+# Set to "baseline" or "carbon" — the DAG reads this to decide
+# whether to add schedulerName + schedulingGates to pod overrides.
+env:
+  - name: BENCHMARK_PHASE
+    value: "baseline"
+
+# Minimal resources for the TB cluster
+scheduler:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+triggerer:
+  enabled: false
+
+# Persistent logs
+logs:
+  persistence:
+    enabled: true
+    size: 5Gi

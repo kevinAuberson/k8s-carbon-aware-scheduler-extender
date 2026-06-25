@@ -26,8 +26,8 @@ spec:
               cpu: "100m"
               memory: "64Mi"
 ---
-# Job batch (flexible par défaut) : schedulingGate retient le pod tant que la CI
-# n'est pas favorable. Le gate controller retire la gate automatiquement.
+# Batch job (flexible by default): schedulingGate holds the pod until CI
+# conditions are favorable. The gate controller removes the gate automatically.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -49,8 +49,8 @@ spec:
               memory: "64Mi"
       restartPolicy: Never
 ---
-# Job batch opt-out : annotation flexible=false → le gate controller ne retarde
-# jamais ce pod (la gate est retirée immédiatement)
+# Batch job opt-out: annotation flexible=false -> the gate controller never
+# delays this pod (the gate is removed immediately)
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -75,8 +75,8 @@ spec:
               memory: "64Mi"
       restartPolicy: Never
 ---
-# Pod orphelin sans resources : BestEffort → flexible par défaut → gate retient
-# le pod tant que la CI n'est pas favorable
+# Orphan pod without resources: BestEffort -> flexible by default -> gate holds
+# the pod until CI conditions are favorable
 apiVersion: v1
 kind: Pod
 metadata:
@@ -91,7 +91,7 @@ spec:
       image: busybox
       command: ["sleep", "3600"]
 ---
-# Pod orphelin avec resources : pas d'owner, QoS=Guaranteed → latency-sensitive → schedule immédiat
+# Orphan pod with resources: no owner, QoS=Guaranteed -> latency-sensitive -> immediate schedule
 apiVersion: v1
 kind: Pod
 metadata:

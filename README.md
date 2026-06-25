@@ -1,1 +1,0 @@
-# k8s-carbon-aware-scheduler-extender
