@@ -20,8 +20,6 @@ webserver:
     password: admin
 
 # Environment variable to control the benchmark phase.
-# Set to "baseline" or "carbon" — the DAG reads this to decide
-# whether to add schedulerName + schedulingGates to pod overrides.
 env:
   - name: BENCHMARK_PHASE
     value: "baseline"
@@ -39,8 +37,7 @@ scheduler:
 triggerer:
   enabled: false
 
-# Persistent logs
+# No persistent logs
 logs:
   persistence:
-    enabled: true
-    size: 5Gi
+    enabled: false
