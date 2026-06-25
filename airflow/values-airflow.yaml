@@ -3,14 +3,10 @@
 
 executor: KubernetesExecutor
 
-# DAGs are synced from a git repo (this one)
+# DAGs loaded manually via kubectl cp (repo is private)
 dags:
   gitSync:
-    enabled: true
-    repo: https://github.com/aubersonkevin/k8s-carbon-aware-scheduler-extender.git
-    branch: develop
-    subPath: airflow/dags
-    wait: 60
+    enabled: false
 
 # Web UI
 webserver:
