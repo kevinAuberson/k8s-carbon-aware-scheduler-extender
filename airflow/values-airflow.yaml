@@ -1,12 +1,33 @@
-# Helm values for Apache Airflow with KubernetesExecutor
-# Install: helm install airflow apache-airflow/airflow -n airflow -f values-airflow.yaml
+# Helm values for Apache Airflow (chart 1.16.0) with KubernetesExecutor
+# Deploy with:
+#   kubectl create namespace airflow
+#   kubectl apply -f airflow/manifests/postgres.yaml
+#   helm install airflow apache-airflow/airflow -n airflow \
+#     -f airflow/values-airflow.yaml --version 1.16.0
 
 executor: KubernetesExecutor
 
-# DAGs loaded manually via kubectl cp (repo is private)
+# Use external PostgreSQL (standard image, no Bitnami dependency)
+postgresql:
+  enabled: false
+
+data:
+  metadataConnection:
+    user: airflow
+    pass: airflow
+    host: postgres.airflow.svc.cluster.local
+    port: 5432
+    db: airflow
+    protocol: postgresql
+
+# DAGs synced from public GitHub repo
 dags:
   gitSync:
-    enabled: false
+    enabled: true
+    repo: https://github.com/kevinauberson/k8s-carbon-aware-scheduler-extender.git
+    branch: develop
+    subPath: airflow/dags
+    wait: 60
 
 # Web UI
 webserver:
@@ -16,6 +37,8 @@ webserver:
     password: admin
 
 # Environment variable to control the benchmark phase.
+# baseline : default scheduler, no scheduling gates
+# carbon   : carbon-aware scheduler + scheduling gates on worker pods
 env:
   - name: BENCHMARK_PHASE
     value: "baseline"
