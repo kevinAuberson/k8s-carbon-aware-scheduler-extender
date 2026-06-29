@@ -24,6 +24,7 @@ spec:
       labels:
         app: postgres
     spec:
+      schedulerName: carbon-aware
       containers:
         - name: postgres
           image: postgres:16

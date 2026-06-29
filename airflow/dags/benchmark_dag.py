@@ -49,10 +49,12 @@ default_args = {
 _pod_override = None
 if BENCHMARK_PHASE == "carbon":
     _pod_override = k8s.V1Pod(
+        metadata=k8s.V1ObjectMeta(labels={"carbon-class": "batch"}),
         spec=k8s.V1PodSpec(
             scheduler_name="carbon-aware",
+            scheduling_gates=[k8s.V1PodSchedulingGate(name="carbon-aware-gate")],
             containers=[k8s.V1Container(name="base")],
-        )
+        ),
     )
 
 with DAG(

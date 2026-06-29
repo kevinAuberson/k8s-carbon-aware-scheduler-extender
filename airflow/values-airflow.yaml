@@ -29,6 +29,10 @@ dags:
     subPath: airflow/dags
     wait: 60
 
+# All Airflow components use the carbon-aware scheduler so the extender
+# can classify them (webserver/scheduler → latency-sensitive, workers → batch)
+schedulerName: carbon-aware
+
 # Web UI
 webserver:
   defaultUser:
