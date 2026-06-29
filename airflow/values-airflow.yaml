@@ -29,12 +29,9 @@ dags:
     subPath: airflow/dags
     wait: 60
 
-# All Airflow components use the carbon-aware scheduler so the extender
-# can classify them (webserver/scheduler → latency-sensitive, workers → batch)
-schedulerName: carbon-aware
-
 # Web UI
 webserver:
+  schedulerName: carbon-aware
   defaultUser:
     enabled: true
     username: admin
@@ -49,6 +46,7 @@ env:
 
 # Minimal resources for the TB cluster
 scheduler:
+  schedulerName: carbon-aware
   resources:
     requests:
       cpu: 250m
@@ -59,6 +57,9 @@ scheduler:
 
 triggerer:
   enabled: false
+
+statsd:
+  schedulerName: carbon-aware
 
 # No persistent logs
 logs:
