@@ -31,7 +31,6 @@ dags:
 
 # Web UI
 webserver:
-  schedulerName: carbon-aware
   defaultUser:
     enabled: true
     username: admin
@@ -46,7 +45,6 @@ env:
 
 # Minimal resources for the TB cluster
 scheduler:
-  schedulerName: carbon-aware
   resources:
     requests:
       cpu: 250m
@@ -57,9 +55,6 @@ scheduler:
 
 triggerer:
   enabled: false
-
-statsd:
-  schedulerName: carbon-aware
 
 # No persistent logs
 logs:
