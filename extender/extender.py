@@ -11,6 +11,7 @@ Description: HTTP entry point for the carbon-aware scheduler extender.
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -27,6 +28,7 @@ from metrics import (
     NODE_SCORE,
     NODE_SELECTED,
     NODE_WATTS,
+    PRIORITIZE_LATENCY,
     SCHEDULING_DECISIONS,
     SIGNAL_AGE,
 )
@@ -142,7 +144,9 @@ async def prioritize(request: Request):
         n["metadata"]["name"] for n in body.get("Nodes", {}).get("items", [])
     ]
 
+    _start = time.monotonic()
     scores = scorer.score_nodes(pod, node_names)
+    PRIORITIZE_LATENCY.observe(time.monotonic() - _start)
     results = [{"Host": name, "Score": scores.get(name, NEUTRAL_SCORE)} for name in node_names]
 
     carbon_class = classify(pod).value

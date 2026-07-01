@@ -3,7 +3,7 @@
   "uid": "carbon-aware-scheduler",
   "description": "Metrics for the carbon-aware Kubernetes scheduler extender — temporal shifting, node scoring, and grid intensity.",
   "schemaVersion": 38,
-  "version": 5,
+  "version": 6,
   "refresh": "30s",
   "time": { "from": "now-3h", "to": "now" },
   "timezone": "browser",
@@ -13,7 +13,7 @@
     {
       "id": 1,
       "title": "Grid Carbon Intensity",
-      "description": "Current CI from ElectricityMaps. Color follows dynamic green/dirty thresholds.",
+      "description": "Current CI from Electricity Maps. Colour follows dynamic green/dirty thresholds.",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
       "targets": [{
@@ -43,7 +43,7 @@
     {
       "id": 2,
       "title": "Signal Age",
-      "description": "Age of the last carbon signal written by the aggregator. Alert if > 10 min.",
+      "description": "Age of the last carbon signal written by the aggregator. Turns red above 10 min (stale signal threshold).",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
       "targets": [{
@@ -94,7 +94,7 @@
     {
       "id": 4,
       "title": "Delay Rate",
-      "description": "Fraction of scheduling decisions that result in a delay (pod kept Pending).",
+      "description": "Fraction of scheduling decisions that result in a delay (pod kept in SchedulingGated state).",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
       "targets": [{
@@ -123,7 +123,7 @@
     {
       "id": 10,
       "title": "Green Threshold",
-      "description": "Current dynamic green threshold (P25 forecast or monthly table). Pods are scheduled immediately below this value.",
+      "description": "Current dynamic green threshold (P15 forecast or monthly table). Pods are scheduled immediately below this value.",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
       "targets": [{
@@ -145,7 +145,7 @@
     {
       "id": 11,
       "title": "Dirty Threshold",
-      "description": "Current dynamic dirty threshold (P75 forecast or monthly table). Batch pods are delayed above this value.",
+      "description": "Current dynamic dirty threshold (P85 forecast or monthly table). All flexible pods are delayed above this value.",
       "type": "stat",
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "targets": [{
@@ -167,7 +167,7 @@
     {
       "id": 5,
       "title": "Grid Carbon Intensity over Time",
-      "description": "Evolution of the grid CI with dynamic green/dirty threshold lines. Thresholds update every 30 min from forecast P25/P75.",
+      "description": "Evolution of the grid CI with dynamic green/dirty threshold lines. Thresholds are updated every cycle from forecast P15/P85 or monthly historical table.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "targets": [
@@ -177,11 +177,11 @@
         },
         {
           "expr": "carbon_green_threshold_g_per_kwh",
-          "legendFormat": "Seuil vert"
+          "legendFormat": "Green threshold"
         },
         {
           "expr": "carbon_dirty_threshold_g_per_kwh",
-          "legendFormat": "Seuil rouge"
+          "legendFormat": "Dirty threshold"
         }
       ],
       "options": { "tooltip": { "mode": "single" } },
@@ -192,7 +192,7 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Seuil vert" },
+            "matcher": { "id": "byName", "options": "Green threshold" },
             "properties": [
               { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } },
               { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 5] } },
@@ -200,7 +200,7 @@
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Seuil rouge" },
+            "matcher": { "id": "byName", "options": "Dirty threshold" },
             "properties": [
               { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
               { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 5] } },
@@ -233,7 +233,7 @@
     {
       "id": 7,
       "title": "Node Carbon Scores (last prioritization)",
-      "description": "Score 0–100 per node. 100 = lowest marginal carbon cost. Mean-centered: small cost differences give proportional scores instead of 0/100.",
+      "description": "Score 0–100 per node per carbon class. 100 = lowest marginal carbon cost. Mean-centered: small cost differences give proportional scores rather than 0/100 extremes.",
       "type": "bargauge",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [{
@@ -265,7 +265,7 @@
     {
       "id": 8,
       "title": "CI Gain from Delays (p50 / p90)",
-      "description": "Median and 90th percentile of the CI gain (gCO₂/kWh) achieved by delaying flexible pods.",
+      "description": "Median and 90th percentile of the CI gain (gCO₂/kWh) achieved by delaying flexible pods to a greener window.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
@@ -289,7 +289,7 @@
     {
       "id": 12,
       "title": "Node Power Consumption (Watts)",
-      "description": "Real-time power draw per node from vSphere ESXi sensors. Updated continuously every 30 s by the extender background task.",
+      "description": "Real-time power draw per node from vSphere ESXi sensors. Updated every 30 s by the aggregator.",
       "type": "bargauge",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "targets": [{
@@ -320,7 +320,7 @@
     {
       "id": 13,
       "title": "Node CO₂ Emission Rate",
-      "description": "CO₂ emission rate per node in gCO₂eq/s = watts × grid_intensity / 3_600_000. Reflects both power draw and grid cleanliness.",
+      "description": "CO₂ emission rate per node in gCO₂eq/s = (watts × grid_intensity) / 3_600_000. Reflects both power draw and current grid cleanliness.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
       "targets": [{
@@ -337,84 +337,25 @@
     },
 
     {
-      "id": 14,
-      "title": "CI — Carbon-Aware vs Référence (scheduler par défaut)",
-      "description": "Ligne bleue = CI courante du réseau (ce qu'un scheduler par défaut utiliserait en schedulant immédiatement). Ligne verte = CI moyenne au moment où le carbon-aware scheduler place effectivement les pods. L'écart entre les deux = gain du temporal shifting.",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
-      "targets": [
-        {
-          "expr": "carbon_grid_intensity_current_g_per_kwh",
-          "legendFormat": "CI réseau (référence scheduler par défaut)"
-        },
-        {
-          "expr": "sum(rate(carbon_ci_at_decision_g_per_kwh_sum{decision=\"schedule_now\"}[10m])) / sum(rate(carbon_ci_at_decision_g_per_kwh_count{decision=\"schedule_now\"}[10m]))",
-          "legendFormat": "CI moyenne au scheduling (carbon-aware)"
-        }
-      ],
-      "options": { "tooltip": { "mode": "multi" } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": { "lineWidth": 2 }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "CI réseau (référence scheduler par défaut)" },
-            "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } },
-              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 4] } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "CI moyenne au scheduling (carbon-aware)" },
-            "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
-            ]
-          }
-        ]
-      }
-    },
-
-    {
-      "id": 15,
-      "title": "Répartition des sélections de nœuds",
-      "description": "Taux de sélection par nœud par le carbon-aware scheduler. Un scheduler par défaut distribuerait uniformément ; le carbon-aware devrait concentrer les pods sur le nœud le moins carboné. Comparer avec kube_pod_info par nœud pour les pods schedulés par default-scheduler.",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
-      "targets": [{
-        "expr": "sum by (node) (rate(carbon_node_selected_total[10m]))",
-        "legendFormat": "{{node}}"
-      }],
-      "options": { "tooltip": { "mode": "multi" } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": { "lineWidth": 2 }
-        }
-      }
-    },
-
-    {
       "id": 16,
       "title": "── BENCHMARK ──",
       "type": "text",
       "gridPos": { "h": 2, "w": 24, "x": 0, "y": 28 },
       "options": {
         "mode": "markdown",
-        "content": "### Benchmark — Comparaison Baseline vs Carbon-Aware\nSélectionner le time range Grafana sur chaque phase de 48h pour comparer les métriques. Les panels ci-dessous utilisent `$__range` et ne montrent que la période sélectionnée."
+        "content": "### Benchmark — Baseline vs Carbon-Aware Comparison\nSet the Grafana time range to each 48-hour phase to compare the metrics below. All panels use `$__range` and display only the selected period."
       }
     },
 
     {
       "id": 17,
-      "title": "CI moyenne au scheduling (période)",
-      "description": "Moyenne pondérée de la CI au moment du scheduling sur la période sélectionnée. Comparer cette valeur entre les deux phases du benchmark.",
+      "title": "Avg CI at Scheduling (period)",
+      "description": "Weighted average CI at the moment of scheduling over the selected period. Compare this value between baseline and carbon-aware runs — a lower value in the carbon-aware run confirms that pods were placed during cleaner grid windows.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 30 },
       "targets": [{
         "expr": "sum(increase(carbon_ci_at_decision_g_per_kwh_sum{decision=\"schedule_now\"}[$__range])) / sum(increase(carbon_ci_at_decision_g_per_kwh_count{decision=\"schedule_now\"}[$__range]))",
-        "legendFormat": "CI moy. gCO₂/kWh"
+        "legendFormat": "avg CI gCO₂/kWh"
       }],
       "options": {
         "colorMode": "background",
@@ -438,8 +379,8 @@
 
     {
       "id": 18,
-      "title": "Décisions schedule / delay (période)",
-      "description": "Nombre de décisions sur la période sélectionnée. En phase baseline, delay devrait être ~0.",
+      "title": "Schedule / Delay Decisions (period)",
+      "description": "Total count of schedule_now vs delay decisions over the selected period. In the baseline phase, delay should be ~0.",
       "type": "piechart",
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 30 },
       "targets": [
@@ -473,8 +414,8 @@
 
     {
       "id": 19,
-      "title": "Durée de délai (p50 / p90)",
-      "description": "Temps passé en SchedulingGated avant libération. En phase baseline cette métrique est vide.",
+      "title": "Gate Delay Duration (p50 / p90)",
+      "description": "Time pods spent in SchedulingGated state before being released. In the baseline phase this metric is empty.",
       "type": "timeseries",
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 30 },
       "targets": [
@@ -497,13 +438,13 @@
 
     {
       "id": 20,
-      "title": "Gain CO₂ moyen (période)",
-      "description": "Gain moyen en gCO₂/kWh obtenu par le temporal shifting sur la période sélectionnée. Uniquement disponible en phase carbon-aware.",
+      "title": "Avg CO₂ Gain from Delays (period)",
+      "description": "Average CI gain (gCO₂/kWh) obtained by temporal shifting over the selected period. Only populated in the carbon-aware phase.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 30 },
       "targets": [{
         "expr": "sum(increase(carbon_delay_gain_g_per_kwh_sum[$__range])) / sum(increase(carbon_delay_gain_g_per_kwh_count[$__range]))",
-        "legendFormat": "gain moyen gCO₂/kWh"
+        "legendFormat": "avg gain gCO₂/kWh"
       }],
       "options": {
         "colorMode": "background",
@@ -526,13 +467,13 @@
 
     {
       "id": 21,
-      "title": "CO₂ proportionnel total (période)",
-      "description": "Somme des CI au moment du scheduling (Σ CI × tâches). Proportionnel au CO₂ total émis car E_task est constant entre les phases. Comparer cette valeur entre baseline et carbon-aware pour quantifier le gain absolu.",
+      "title": "Total Proportional CO₂ (period)",
+      "description": "Sum of CI values at scheduling decisions (Σ CI × tasks). Proportional to total CO₂ emitted, assuming constant energy per task between phases. Compare between baseline and carbon-aware to quantify the absolute gain.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 35 },
       "targets": [{
         "expr": "sum(increase(carbon_ci_at_decision_g_per_kwh_sum{decision=\"schedule_now\"}[$__range]))",
-        "legendFormat": "Σ(CI) gCO₂/kWh"
+        "legendFormat": "Σ CI gCO₂/kWh"
       }],
       "options": {
         "colorMode": "background",
@@ -550,13 +491,13 @@
 
     {
       "id": 22,
-      "title": "Tâches exécutées (période)",
-      "description": "Nombre total de pods schedulés sur la période sélectionnée. Doit être identique entre baseline et carbon-aware pour une comparaison valide.",
+      "title": "Tasks Scheduled (period)",
+      "description": "Total number of pods scheduled over the selected period. Should be identical between baseline and carbon-aware phases for a valid comparison.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 35 },
       "targets": [{
         "expr": "sum(increase(carbon_scheduling_decisions_total{decision=\"schedule_now\"}[$__range]))",
-        "legendFormat": "tâches"
+        "legendFormat": "tasks"
       }],
       "options": {
         "colorMode": "value",
@@ -573,14 +514,14 @@
     },
 
     {
-      "id": 23,
-      "title": "CO₂ par tâche (période)",
-      "description": "CI moyenne par tâche schedulée = CO₂ proportionnel par tâche. Permet de comparer même si le nombre de tâches diffère légèrement entre les phases. Plus bas = meilleur.",
+      "id": 25,
+      "title": "Scheduling Latency p95 (period)",
+      "description": "95th percentile of /prioritize endpoint response time over the selected period. Should remain below 50ms. Compare between baseline and carbon-aware phases to quantify the overhead introduced by carbon scoring.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 35 },
       "targets": [{
-        "expr": "sum(increase(carbon_ci_at_decision_g_per_kwh_sum{decision=\"schedule_now\"}[$__range])) / sum(increase(carbon_scheduling_decisions_total{decision=\"schedule_now\"}[$__range]))",
-        "legendFormat": "gCO₂/kWh par tâche"
+        "expr": "histogram_quantile(0.95, sum(rate(carbon_prioritize_duration_seconds_bucket[$__range])) by (le))",
+        "legendFormat": "p95 latency"
       }],
       "options": {
         "colorMode": "background",
@@ -589,14 +530,13 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "decimals": 1,
+          "unit": "s",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 40 },
-              { "color": "red", "value": 70 }
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.2 }
             ]
           }
         }
@@ -605,13 +545,13 @@
 
     {
       "id": 24,
-      "title": "Délai total accumulé (période)",
-      "description": "Temps total passé en SchedulingGated sur la période. Représente le 'coût en latence' du temporal shifting. En phase baseline cette valeur est ~0.",
+      "title": "Total Accumulated Delay (period)",
+      "description": "Total time pods spent in SchedulingGated state over the period. Represents the latency cost of temporal shifting. Should be ~0 in the baseline phase.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 35 },
       "targets": [{
         "expr": "sum(increase(carbon_gate_delay_duration_seconds_sum[$__range]))",
-        "legendFormat": "temps total"
+        "legendFormat": "total delay"
       }],
       "options": {
         "colorMode": "background",
@@ -634,38 +574,92 @@
     },
 
     {
-      "id": 9,
-      "title": "CI au scheduling — Baseline vs Carbon-Aware (p50)",
-      "description": "Comparaison directe : latency_sensitive = jamais retardé (simule le scheduler par défaut), batch = temporal shifting actif. L'écart entre les deux courbes = gain CO₂ du carbon-aware scheduling.",
+      "id": 26,
+      "title": "Scheduling Latency over Time (p50 / p95)",
+      "description": "Time spent inside the /prioritize endpoint computing carbon-aware scores. Both percentiles should remain stable and low (< 50ms) throughout the benchmark.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 56 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{carbon_class=\"latency_sensitive\"}[10m])) by (le))",
-          "legendFormat": "Baseline (latency_sensitive — jamais retardé)"
+          "expr": "histogram_quantile(0.5, sum(rate(carbon_prioritize_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{carbon_class=\"batch\", decision=\"schedule_now\"}[10m])) by (le))",
-          "legendFormat": "Carbon-aware (batch — après shifting)"
+          "expr": "histogram_quantile(0.95, sum(rate(carbon_prioritize_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.2 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 14,
+      "title": "CI at Scheduling — Carbon-Aware vs Reference (default scheduler)",
+      "description": "Blue dashed line = current grid CI (what a default scheduler would use by scheduling immediately). Green line = average CI at which the carbon-aware scheduler actually places pods. The gap between the two curves represents the gain from temporal shifting.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "expr": "carbon_grid_intensity_current_g_per_kwh",
+          "legendFormat": "Grid CI (default scheduler reference)"
         },
         {
-          "expr": "histogram_quantile(0.5, sum(rate(carbon_ci_at_decision_g_per_kwh_bucket{carbon_class=\"batch\", decision=\"delay\"}[10m])) by (le))",
-          "legendFormat": "Batch — CI au moment du délai"
+          "expr": "sum(rate(carbon_ci_at_decision_g_per_kwh_sum{decision=\"schedule_now\"}[10m])) / sum(rate(carbon_ci_at_decision_g_per_kwh_count{decision=\"schedule_now\"}[10m]))",
+          "legendFormat": "Avg CI at scheduling (carbon-aware)"
         }
       ],
       "options": { "tooltip": { "mode": "multi" } },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "lineWidth": 2 },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 40 },
-              { "color": "red", "value": 70 }
+          "custom": { "lineWidth": 2 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Grid CI (default scheduler reference)" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 4] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Avg CI at scheduling (carbon-aware)" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
             ]
           }
+        ]
+      }
+    },
+
+    {
+      "id": 15,
+      "title": "Node Selection Distribution",
+      "description": "Rate of node selections by the carbon-aware scheduler. A default scheduler distributes uniformly; the carbon-aware scheduler should favour lower-carbon nodes. Compare with kube_pod_info per node for pods scheduled by the default scheduler.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "targets": [{
+        "expr": "sum by (node) (rate(carbon_node_selected_total[10m]))",
+        "legendFormat": "{{node}}"
+      }],
+      "options": { "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "lineWidth": 2 }
         }
       }
     }

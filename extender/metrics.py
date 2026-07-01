@@ -96,3 +96,10 @@ MARGINAL_COST = Histogram(
     ["node"],
     buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0],
 )
+
+# Scheduling latency — time spent inside /prioritize computing carbon scores
+PRIORITIZE_LATENCY = Histogram(
+    "carbon_prioritize_duration_seconds",
+    "Time spent inside the /prioritize endpoint computing carbon-aware node scores",
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
