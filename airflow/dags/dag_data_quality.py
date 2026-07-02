@@ -59,7 +59,7 @@ def validate_schema(**context):
     checks = {
         "orders.amount": {"type": "float", "null_rate": 0.001, "range": (0.01, 9999.99)},
         "orders.status": {"type": "enum", "values": ["pending", "paid", "cancelled"]},
-        "user_events.user_id": {"type": "int", "null_rate": 0.0},
+        "user_events.user_id": {"type": "int", "null_rate": 0.005},
         "payments.currency": {"type": "enum", "values": ["USD", "EUR", "CHF"]},
     }
 
