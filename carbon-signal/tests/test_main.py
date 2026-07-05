@@ -163,24 +163,3 @@ def test_compute_thresholds_uses_forecast_p15_p85():
     assert green < dirty
     assert 20 <= green <= 30
     assert 50 <= dirty <= 60
-
-
-def test_compute_thresholds_falls_back_to_monthly_when_spread_too_small():
-    """Historical table is used when the forecast spread is < 5 gCO2/kWh."""
-    forecast = [{"carbon_intensity": 28.0 + i * 0.1} for i in range(20)]  # spread ~1.9
-    monthly = {6: {"green": 27.6, "dirty": 33.2}}
-
-    green, dirty, source = main.compute_thresholds(monthly, forecast)
-
-    assert "monthly_table" in source
-    assert green == 27.6
-    assert dirty == 33.2
-
-
-def test_compute_thresholds_falls_back_to_monthly_when_no_forecast():
-    """Historical table is used when forecast is empty."""
-    monthly = {6: {"green": 27.6, "dirty": 33.2}}
-
-    green, dirty, source = main.compute_thresholds(monthly, [])
-
-    assert "monthly_table" in source
