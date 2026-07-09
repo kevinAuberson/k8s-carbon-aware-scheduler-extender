@@ -107,60 +107,6 @@ class MetricsServer:
         cache.set("metrics_nodes", nodes, self.ttl)
         return nodes
 
-    def get_pod_usage(self, namespace=None):
-        """
-        Get current CPU and memory usage per pod, summed across containers.
-
-        Args:
-            namespace: Optional namespace filter. If None, queries all
-                       namespaces in the cluster.
-
-        Returns:
-            A list of dicts, each with:
-            - name (str): pod name
-            - namespace (str): pod namespace
-            - cpu_millicores (int): total CPU usage of all containers
-            - memory_mib (int): total memory usage of all containers
-        """
-        cache_key = f"metrics_pods_{namespace or 'all'}"
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        self._connect()
-        if namespace:
-            data = self._api.list_namespaced_custom_object(
-                group="metrics.k8s.io",
-                version="v1beta1",
-                namespace=namespace,
-                plural="pods",
-            )
-        else:
-            data = self._api.list_cluster_custom_object(
-                group="metrics.k8s.io",
-                version="v1beta1",
-                plural="pods",
-            )
-
-        pods = []
-        for item in data.get("items", []):
-            total_cpu = 0
-            total_mem = 0
-            for c in item.get("containers", []):
-                total_cpu += self._parse_cpu(c["usage"]["cpu"])
-                total_mem += self._parse_memory(c["usage"]["memory"])
-            pods.append(
-                {
-                    "name": item["metadata"]["name"],
-                    "namespace": item["metadata"]["namespace"],
-                    "cpu_millicores": total_cpu,
-                    "memory_mib": total_mem,
-                }
-            )
-
-        cache.set(cache_key, pods, self.ttl)
-        return pods
-
 
 # Standalone test: python metrics_server.py
 if __name__ == "__main__":

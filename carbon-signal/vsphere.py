@@ -152,9 +152,23 @@ class VSphere:
         """
         Estimate the power consumed by each running VM.
 
-        The estimation uses the VM's CPU usage in MHz divided by the host's
-        total MHz, applied to the host's measured Watts. It's a linear
-        approximation that ignores memory and I/O contributions.
+        The estimation uses the VM's CPU usage in MHz divided by the SUM of
+        all powered-on VMs' CPU usage on the same host (i.e. the host's
+        actual concurrent usage), applied to the host's measured Watts.
+
+        This differs from a naive division by the host's theoretical peak
+        capacity (cpuMhz * numCpuCores): that denominator stays constant
+        regardless of how busy the host actually is, so on a lightly loaded
+        host it silently under-attributes almost all of the host's real
+        power draw. Using the sum of ACTUAL usage instead guarantees the
+        host's measured Watts are fully and proportionally distributed
+        among the VMs that are actually running at that moment — matching
+        physical reality, where power doesn't vanish just because the host
+        isn't at 100% of its theoretical maximum.
+
+        It remains a linear approximation that ignores memory and I/O
+        contributions, and does not attribute any power to a host's
+        near-zero idle floor when no VM is using CPU at all (see Chapter 7).
 
         Returns:
             A list of dicts, one per powered-on VM, each with:
@@ -171,7 +185,10 @@ class VSphere:
         self._connect()
         hosts = self.get_host_power()
 
-        vms = []
+        # First pass: collect raw stats and group actual CPU usage by host,
+        # since the denominator now depends on ALL VMs on that host.
+        raw_vms = []
+        usage_by_host: dict[str, float] = {}
         for vm in self._get_all(vim.VirtualMachine):
             if vm.runtime.powerState != "poweredOn":
                 continue
@@ -185,21 +202,40 @@ class VSphere:
             )
             cpu_mhz = stats.get("cpu.usagemhz.average", 0)
             mem_mib = stats.get("mem.consumed.average", 0) / 1024
-
             host_name = vm.runtime.host.name
-            host_data = hosts.get(host_name, {"watts": 0, "total_mhz": 1})
 
-            if host_data["total_mhz"] > 0:
-                watts = (cpu_mhz / host_data["total_mhz"]) * host_data["watts"]
-            else:
-                watts = 0
-
-            vms.append(
+            raw_vms.append(
                 {
                     "name": vm.name,
                     "host": host_name,
                     "cpu_mhz": cpu_mhz,
                     "memory_mib": mem_mib,
+                }
+            )
+            usage_by_host[host_name] = usage_by_host.get(host_name, 0.0) + cpu_mhz
+
+        # Second pass: attribute each host's measured Watts proportionally
+        # to each VM's share of the host's ACTUAL total usage this cycle.
+        vms = []
+        for vm in raw_vms:
+            host_data = hosts.get(vm["host"], {"watts": 0, "total_mhz": 1})
+            host_actual_mhz = usage_by_host.get(vm["host"], 0.0)
+
+            if host_actual_mhz > 0:
+                watts = (vm["cpu_mhz"] / host_actual_mhz) * host_data["watts"]
+            else:
+                # Host measured >0 W but no VM shows CPU usage this cycle
+                # (e.g. sampling gap): split the host's power evenly rather
+                # than attributing 0 to everyone.
+                n_vms_on_host = sum(1 for v in raw_vms if v["host"] == vm["host"])
+                watts = host_data["watts"] / n_vms_on_host if n_vms_on_host else 0
+
+            vms.append(
+                {
+                    "name": vm["name"],
+                    "host": vm["host"],
+                    "cpu_mhz": vm["cpu_mhz"],
+                    "memory_mib": vm["memory_mib"],
                     "watts": watts,
                 }
             )

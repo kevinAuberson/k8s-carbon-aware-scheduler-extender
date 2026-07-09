@@ -15,6 +15,7 @@ Description: Entry point of the Carbon Signal Aggregator. Polls all data
 
 import json
 import os
+import re
 import signal
 import time
 from datetime import UTC, datetime
@@ -117,8 +118,6 @@ def compute_thresholds(
 
 def _parse_k8s_memory(mem_str: str) -> int:
     """Convert a Kubernetes memory string (Ki/Mi/Gi) to MiB."""
-    import re
-
     units = {"Ki": 1 / 1024, "Mi": 1, "Gi": 1024, "Ti": 1024 * 1024}
     match = re.match(r"^(\d+)([A-Za-z]*)$", mem_str)
     if not match:

@@ -92,16 +92,6 @@ class SignalLoader:
         except (ValueError, KeyError):
             return None
 
-    def get_node_data(self, node_name: str) -> dict | None:
-        """Return the signal data for a specific node, or None if not found."""
-        signal = self.load()
-        if not signal:
-            return None
-        for node in signal["nodes"]:
-            if node["name"] == node_name:
-                return node
-        return None
-
     def age_seconds(self) -> float | None:
         """Return the age of the current signal in seconds, or None if unavailable."""
         signal = self.load()

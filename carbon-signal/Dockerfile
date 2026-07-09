@@ -22,7 +22,7 @@ WORKDIR /app
 
 COPY --from=builder /root/.local /home/app/.local
 
-COPY --chown=app:app cache.py electricity_maps.py kepler.py \
+COPY --chown=app:app cache.py electricity_maps.py \
                      metrics_server.py vsphere.py main.py ./
 COPY --chown=app:app node_mapping.yaml ./
 
