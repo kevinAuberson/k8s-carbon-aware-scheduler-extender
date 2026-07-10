@@ -57,10 +57,11 @@ def test_get_host_power_computes_total_mhz():
 
 def test_vm_watts_estimation_ratio():
     """
-    VM watts = (vm_cpu_mhz / host_total_mhz) * host_watts.
+    VM watts = (vm_cpu_mhz / sum_of_all_vm_cpu_mhz_on_host) * host_watts.
 
-    Example: VM uses 4800 MHz on a host of 48000 MHz total drawing 200 W.
-    Ratio = 4800 / 48000 = 0.1, so VM watts = 0.1 * 200 = 20 W.
+    Two VMs on the same host drawing 200 W total:
+      vm-1 uses 4800 MHz, vm-2 uses 43200 MHz → total actual = 48000 MHz.
+    vm-1 ratio = 4800 / 48000 = 0.1, so vm-1 watts = 0.1 * 200 = 20 W.
     """
     vs = VSphere()
     cache._store.clear()
@@ -68,26 +69,27 @@ def test_vm_watts_estimation_ratio():
     vs._connect = MagicMock()
     vs._content = MagicMock()
 
-    fake_vm = _fake_vm("vm-1", host_name="esxi-1")
-    vs._get_all = MagicMock(return_value=[fake_vm])
+    fake_vm1 = _fake_vm("vm-1", host_name="esxi-1")
+    fake_vm2 = _fake_vm("vm-2", host_name="esxi-1")
+    vs._get_all = MagicMock(return_value=[fake_vm1, fake_vm2])
 
     vs.get_host_power = MagicMock(
         return_value={"esxi-1": {"watts": 200.0, "total_mhz": 48000}}
     )
 
     vs._query_stats = MagicMock(
-        return_value={
-            "cpu.usagemhz.average": 4800,
-            "mem.consumed.average": 2 * 1024 * 1024,
-        }
+        side_effect=[
+            {"cpu.usagemhz.average": 4800, "mem.consumed.average": 2 * 1024 * 1024},
+            {"cpu.usagemhz.average": 43200, "mem.consumed.average": 4 * 1024 * 1024},
+        ]
     )
 
     result = vs.get_vm_estimated_watts()
 
-    assert len(result) == 1
-    assert result[0]["name"] == "vm-1"
-    assert result[0]["host"] == "esxi-1"
-    assert result[0]["watts"] == 20.0  # 0.1 * 200
+    assert len(result) == 2
+    vm1 = next(v for v in result if v["name"] == "vm-1")
+    assert vm1["host"] == "esxi-1"
+    assert vm1["watts"] == 20.0  # 4800 / 48000 * 200
 
 
 def test_powered_off_vms_are_skipped():

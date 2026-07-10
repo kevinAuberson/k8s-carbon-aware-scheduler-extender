@@ -168,7 +168,7 @@ class VSphere:
 
         It remains a linear approximation that ignores memory and I/O
         contributions, and does not attribute any power to a host's
-        near-zero idle floor when no VM is using CPU at all (see Chapter 7).
+        near-zero idle floor when no VM is using CPU.
 
         Returns:
             A list of dicts, one per powered-on VM, each with:
